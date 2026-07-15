@@ -1,0 +1,11 @@
+grid.transparent_background > * {
+    background: black;
+    padding: 10px;
+    margin: 5px;
+    color: white;
+    border: #930303 solid 3px;
+}
+
+grid.transparent_background > entry, grid.transparent_background > button, grid.transparent_background > checkbutton {
+    background: #112253;
+}
