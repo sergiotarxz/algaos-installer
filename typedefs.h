@@ -24,3 +24,5 @@ typedef GdkDisplay *Gdk__Display;
 typedef GtkCssProvider *Gtk__CssProvider;
 typedef GtkGrid *Gtk__Grid;
 typedef GtkLabel *Gtk__Label;
+typedef GtkEditable *Gtk__Editable;
+typedef GtkAlertDialog *Gtk__AlertDialog;

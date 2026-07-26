@@ -29,6 +29,49 @@ typedef struct {
     SV *to;
 } BindingUserdata;
 
+gboolean
+perl_timeout_func(gpointer userdata) {
+    SV *callback = (SV *)userdata;
+    if (!SvOK(callback)) {
+        return FALSE;
+    }
+
+    dSP;
+
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+
+    PUTBACK;
+
+    int count = call_sv(callback, G_SCALAR | G_EVAL);
+    bool out = false;
+
+    SPAGAIN;
+
+    if (SvTRUE(ERRSV)) {
+        Perl_warn("Perl binding callback failed: %s",
+             SvPV_nolen(ERRSV));
+
+        sv_setsv(ERRSV, &PL_sv_undef);
+        count = 0;
+    }
+
+    if (count >= 1) {
+        SV *ret = POPs;
+
+        out = SvTRUE(ret);
+    }
+
+    PUTBACK;
+
+    FREETMPS;
+    LEAVE;
+
+    return out;
+}
+
 static gboolean
 sv_to_gvalue(SV *sv, GValue *value)
 {
@@ -445,14 +488,24 @@ perl_signal_callback(GObject *object, gpointer data)
     XPUSHs(sv_2mortal(newSViv(PTR2IV(object))));
     PUTBACK;
 
-    call_sv(callback, G_DISCARD);
+    call_sv(callback, G_DISCARD | G_EVAL);
+
+    SPAGAIN;
+
+    if (SvTRUE(ERRSV)) {
+        Perl_warn("Unhandled GObject connect callback error: %s",
+                  SvPV_nolen(ERRSV));
+
+        sv_setsv(ERRSV, &PL_sv_undef);
+    }
+
+    PUTBACK;
 
     FREETMPS;
     LEAVE;
 }
 
-
-#line 456 "./GTKWin.c"
+#line 509 "./GTKWin.c"
 #ifndef PERL_UNUSED_VAR
 #  define PERL_UNUSED_VAR(var) if (0) var = var
 #endif
@@ -603,7 +656,172 @@ S_croak_xs_usage(const CV *const cv, const char *const params)
 #  define TARGn(nv, do_taint) sv_setnv_mg(TARG, nv)
 #endif
 
-#line 607 "./GTKWin.c"
+#line 660 "./GTKWin.c"
+
+XS_EUPXS(XS_Front__Net__IfIp_to_reach); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Front__Net__IfIp_to_reach)
+{
+    dVAR; dXSARGS;
+    if (items != 2)
+       croak_xs_usage(cv,  "class, dest");
+    {
+	char *	RETVAL;
+	dXSTARG;
+	SV *	class = ST(0)
+;
+	const char *	dest = (const char *)SvPV_nolen(ST(1))
+;
+#line 504 "./GTKWin.xs"
+        struct addrinfo hints = {0};
+        struct addrinfo *res = NULL;
+        int sock = -1;
+        int rc;
+
+        hints.ai_family = AF_INET;          /* IPv4 only */
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_protocol = IPPROTO_UDP;
+
+        rc = getaddrinfo(dest, "53", &hints, &res);
+        if (rc != 0) {
+            Perl_croak("getaddrinfo(%s): %s",
+                       dest, gai_strerror(rc));
+        }
+
+        sock = socket(res->ai_family,
+                      res->ai_socktype,
+                      res->ai_protocol);
+        if (sock < 0) {
+            int err = errno;
+            freeaddrinfo(res);
+            Perl_croak("socket failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
+            int err = errno;
+            freeaddrinfo(res);
+            close(sock);
+            Perl_croak("connect failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        freeaddrinfo(res);
+
+        struct sockaddr_in local;
+        socklen_t len = sizeof(local);
+
+        if (getsockname(sock, (struct sockaddr *)&local, &len) < 0) {
+            int err = errno;
+            close(sock);
+            Perl_croak("getsockname failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        char *ip;
+        Newxz(ip, INET_ADDRSTRLEN + 1, char);
+
+        if (inet_ntop(AF_INET,
+                      &local.sin_addr,
+                      ip,
+                      INET_ADDRSTRLEN + 1) == NULL) {
+            int err = errno;
+            Safefree(ip);
+            close(sock);
+            Perl_croak("inet_ntop failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        close(sock);
+        RETVAL = ip;
+#line 737 "./GTKWin.c"
+	sv_setpv((SV*)TARG, RETVAL);
+	ST(0) = TARG;
+    }
+    XSRETURN(1);
+}
+
+
+XS_EUPXS(XS_Gtk__AlertDialog_new); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Gtk__AlertDialog_new)
+{
+    dVAR; dXSARGS;
+    if (items != 3)
+       croak_xs_usage(cv,  "class, title, detail");
+    {
+	Gtk__AlertDialog	RETVAL;
+	SV *	class = ST(0)
+;
+	char *	title = (char *)SvPV_nolen(ST(1))
+;
+	char *	detail = (char *)SvPV_nolen(ST(2))
+;
+#line 573 "./GTKWin.xs"
+        RETVAL = gtk_alert_dialog_new(title);
+        gtk_alert_dialog_set_detail(RETVAL, detail);
+#line 762 "./GTKWin.c"
+	{
+	    SV * RETVALSV;
+	    RETVALSV = sv_newmortal();
+	sv_setref_pv(RETVALSV, "Gtk::AlertDialog", (void *)RETVAL);
+	    ST(0) = RETVALSV;
+	}
+    }
+    XSRETURN(1);
+}
+
+
+XS_EUPXS(XS_Gtk__AlertDialog_show); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Gtk__AlertDialog_show)
+{
+    dVAR; dXSARGS;
+    if (items != 2)
+       croak_xs_usage(cv,  "self, parent");
+    {
+	Gtk__AlertDialog	self;
+	Gtk__Window	parent;
+
+    if (sv_isobject(ST(0))) {
+        IV integer_pointer = SvIV(SvRV(ST(0)));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_alert_dialog_get_type())) {
+                self = GTK_ALERT_DIALOG (gobject);
+            } else {
+                croak("Not implementing GTK_ALERT_DIALOG");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::AlertDialog object");
+    }
+;
+
+    if (sv_isobject(ST(1))) {
+        IV integer_pointer = SvIV(SvRV(ST(1)));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_window_get_type())) {
+                parent = GTK_WINDOW (gobject);
+            } else {
+                croak("Not implementing GTK_WINDOW");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::Window object");
+    }
+;
+#line 581 "./GTKWin.xs"
+        gtk_alert_dialog_show(self, parent);
+#line 821 "./GTKWin.c"
+    }
+    XSRETURN_EMPTY;
+}
+
 
 XS_EUPXS(XS_Gtk__Overlay_new); /* prototype to pass -Wmissing-prototypes */
 XS_EUPXS(XS_Gtk__Overlay_new)
@@ -613,10 +831,10 @@ XS_EUPXS(XS_Gtk__Overlay_new)
     PERL_UNUSED_VAR(items); /* -W */
     {
 	Gtk__Overlay	RETVAL;
-#line 451 "./GTKWin.xs"
+#line 588 "./GTKWin.xs"
         RETVAL = GTK_OVERLAY (gtk_overlay_new());
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 620 "./GTKWin.c"
+#line 838 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -673,9 +891,9 @@ XS_EUPXS(XS_Gtk__Overlay_add_overlay)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 459 "./GTKWin.xs"
+#line 596 "./GTKWin.xs"
         gtk_overlay_add_overlay(over, child);
-#line 679 "./GTKWin.c"
+#line 897 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -726,9 +944,9 @@ XS_EUPXS(XS_Gtk__Overlay_set_child)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 464 "./GTKWin.xs"
+#line 601 "./GTKWin.xs"
         gtk_overlay_set_child(over, child);
-#line 732 "./GTKWin.c"
+#line 950 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -742,10 +960,10 @@ XS_EUPXS(XS_Gtk__Grid_new)
     PERL_UNUSED_VAR(items); /* -W */
     {
 	Gtk__Grid	RETVAL;
-#line 471 "./GTKWin.xs"
+#line 608 "./GTKWin.xs"
         RETVAL = GTK_GRID (gtk_grid_new());
         g_object_ref_sink(RETVAL);
-#line 749 "./GTKWin.c"
+#line 967 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -810,9 +1028,9 @@ XS_EUPXS(XS_Gtk__Grid_attach)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 479 "./GTKWin.xs"
+#line 616 "./GTKWin.xs"
         gtk_grid_attach(self, widget, column, row, width, height);
-#line 816 "./GTKWin.c"
+#line 1034 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -830,10 +1048,10 @@ XS_EUPXS(XS_Gtk__Label_new)
 ;
 	char *	label = (char *)SvPV_nolen(ST(1))
 ;
-#line 486 "./GTKWin.xs"
+#line 623 "./GTKWin.xs"
         RETVAL = GTK_LABEL (gtk_label_new((char *)label));
         g_object_ref_sink(RETVAL);
-#line 837 "./GTKWin.c"
+#line 1055 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -859,7 +1077,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_GTK_ALIGN_FILL)
 	dXSTARG;
 #line 6 "./Constants.xsi"
     RETVAL = (unsigned int) GTK_ALIGN_FILL;
-#line 863 "./GTKWin.c"
+#line 1081 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -878,7 +1096,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_GTK_ALIGN_START)
 	dXSTARG;
 #line 13 "./Constants.xsi"
     RETVAL = (unsigned int) GTK_ALIGN_START;
-#line 882 "./GTKWin.c"
+#line 1100 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -897,7 +1115,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_GTK_ALIGN_END)
 	dXSTARG;
 #line 20 "./Constants.xsi"
     RETVAL = (unsigned int) GTK_ALIGN_END;
-#line 901 "./GTKWin.c"
+#line 1119 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -916,7 +1134,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_GTK_ALIGN_CENTER)
 	dXSTARG;
 #line 27 "./Constants.xsi"
     RETVAL = (unsigned int) GTK_ALIGN_CENTER;
-#line 920 "./GTKWin.c"
+#line 1138 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -935,7 +1153,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_GTK_ORIENTATION_VERTICAL)
 	dXSTARG;
 #line 34 "./Constants.xsi"
     RETVAL = (unsigned int) GTK_ORIENTATION_VERTICAL;
-#line 939 "./GTKWin.c"
+#line 1157 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -954,7 +1172,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_GTK_STYLE_PROVIDER_PRIORITY_APPLICATION)
 	dXSTARG;
 #line 41 "./Constants.xsi"
     RETVAL = (unsigned int) GTK_STYLE_PROVIDER_PRIORITY_APPLICATION;
-#line 958 "./GTKWin.c"
+#line 1176 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -973,7 +1191,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_G_BINDING_SYNC_CREATE)
 	dXSTARG;
 #line 48 "./Constants.xsi"
     RETVAL = (unsigned int) G_BINDING_SYNC_CREATE;
-#line 977 "./GTKWin.c"
+#line 1195 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -992,7 +1210,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_G_BINDING_DEFAULT)
 	dXSTARG;
 #line 55 "./Constants.xsi"
     RETVAL = (unsigned int) G_BINDING_DEFAULT;
-#line 996 "./GTKWin.c"
+#line 1214 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -1011,7 +1229,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_new)
 #line 62 "./Constants.xsi"
         RETVAL = malloc(sizeof *RETVAL);
         *RETVAL = 1;
-#line 1015 "./GTKWin.c"
+#line 1233 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1043,7 +1261,7 @@ XS_EUPXS(XS_Gtk__Win__Constants_DESTROY)
 ;
 #line 70 "./Constants.xsi"
         free(self);
-#line 1047 "./GTKWin.c"
+#line 1265 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1081,10 +1299,10 @@ XS_EUPXS(XS_Gtk__ApplicationWindow_new)
         croak("Expected Gtk::Application object");
     }
 ;
-#line 498 "./GTKWin.xs"
+#line 635 "./GTKWin.xs"
         RETVAL = GTK_APPLICATION_WINDOW (gtk_application_window_new(app));
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 1088 "./GTKWin.c"
+#line 1306 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1114,9 +1332,9 @@ XS_EUPXS(XS_PCAP__Packet_DESTROY)
 			"PCAP::Packet::DESTROY",
 			"packet")
 ;
-#line 508 "./GTKWin.xs"
+#line 645 "./GTKWin.xs"
         Safefree(packet);
-#line 1120 "./GTKWin.c"
+#line 1338 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1146,9 +1364,9 @@ XS_EUPXS(XS_PCAP__Packet_src_ip)
 		);
 	}
 ;
-#line 513 "./GTKWin.xs"
+#line 650 "./GTKWin.xs"
         RETVAL = packet->src_ip;
-#line 1152 "./GTKWin.c"
+#line 1370 "./GTKWin.c"
 	sv_setpv((SV*)TARG, RETVAL);
 	ST(0) = TARG;
     }
@@ -1180,9 +1398,9 @@ XS_EUPXS(XS_PCAP__Packet_dst_ip)
 		);
 	}
 ;
-#line 520 "./GTKWin.xs"
+#line 657 "./GTKWin.xs"
         RETVAL = packet->dst_ip;
-#line 1186 "./GTKWin.c"
+#line 1404 "./GTKWin.c"
 	sv_setpv((SV*)TARG, RETVAL);
 	ST(0) = TARG;
     }
@@ -1214,9 +1432,9 @@ XS_EUPXS(XS_PCAP__Packet_src_port)
 		);
 	}
 ;
-#line 527 "./GTKWin.xs"
+#line 664 "./GTKWin.xs"
         RETVAL = packet->src_port;
-#line 1220 "./GTKWin.c"
+#line 1438 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -1248,9 +1466,9 @@ XS_EUPXS(XS_PCAP__Packet_dst_port)
 		);
 	}
 ;
-#line 534 "./GTKWin.xs"
+#line 671 "./GTKWin.xs"
         RETVAL = packet->dst_port;
-#line 1254 "./GTKWin.c"
+#line 1472 "./GTKWin.c"
 	TARGu((UV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -1281,9 +1499,9 @@ XS_EUPXS(XS_PCAP__Packet_payload)
 		);
 	}
 ;
-#line 541 "./GTKWin.xs"
+#line 678 "./GTKWin.xs"
         RETVAL = newSVpv(packet->payload, (STRLEN) packet->payload_len);
-#line 1287 "./GTKWin.c"
+#line 1505 "./GTKWin.c"
 	RETVAL = sv_2mortal(RETVAL);
 	ST(0) = RETVAL;
     }
@@ -1309,10 +1527,10 @@ XS_EUPXS(XS_PCAP__Program_DESTROY)
 			"PCAP::Program::DESTROY",
 			"self")
 ;
-#line 550 "./GTKWin.xs"
+#line 687 "./GTKWin.xs"
         pcap_freecode(self);
         free(self);
-#line 1316 "./GTKWin.c"
+#line 1534 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1342,9 +1560,9 @@ XS_EUPXS(XS_PCAP__Handle_datalink)
 		);
 	}
 ;
-#line 558 "./GTKWin.xs"
+#line 695 "./GTKWin.xs"
         RETVAL = pcap_datalink(self);
-#line 1348 "./GTKWin.c"
+#line 1566 "./GTKWin.c"
 	TARGi((IV)RETVAL, 1);
 	ST(0) = TARG;
     }
@@ -1379,12 +1597,12 @@ XS_EUPXS(XS_PCAP__Handle_compile)
 		);
 	}
 ;
-#line 565 "./GTKWin.xs"
+#line 702 "./GTKWin.xs"
         RETVAL = malloc(sizeof *RETVAL);
         if (pcap_compile(self, RETVAL, program, optimize, PCAP_NETMASK_UNKNOWN) == -1) {
             Perl_croak("%s", pcap_geterr(self));
         }
-#line 1388 "./GTKWin.c"
+#line 1606 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1433,11 +1651,11 @@ XS_EUPXS(XS_PCAP__Handle_set_filter)
 		);
 	}
 ;
-#line 575 "./GTKWin.xs"
+#line 712 "./GTKWin.xs"
         if (pcap_setfilter(self, program) == -1) {
             Perl_croak("%s", pcap_geterr(self));
         }
-#line 1441 "./GTKWin.c"
+#line 1659 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1467,12 +1685,12 @@ XS_EUPXS(XS_PCAP__Handle_set_direction)
 		);
 	}
 ;
-#line 582 "./GTKWin.xs"
+#line 719 "./GTKWin.xs"
         if (0 != strcmp(direction, "out")) {
             Perl_croak("Direction not supported");
         }
         pcap_setdirection(self, PCAP_D_OUT);
-#line 1476 "./GTKWin.c"
+#line 1694 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1502,7 +1720,7 @@ XS_EUPXS(XS_PCAP__Handle_loop)
 		);
 	}
 ;
-#line 590 "./GTKWin.xs"
+#line 727 "./GTKWin.xs"
         if (!SvROK(coderef) ||
             SvTYPE(SvRV(coderef)) != SVt_PVCV)
         {
@@ -1514,7 +1732,7 @@ XS_EUPXS(XS_PCAP__Handle_loop)
 
         pcap_loop(self, -1, gtk_win_pcap_handler, (u_char *)ctx);
         free(ctx);
-#line 1518 "./GTKWin.c"
+#line 1736 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1538,9 +1756,9 @@ XS_EUPXS(XS_PCAP__Handle_DESTROY)
 			"PCAP::Handle::DESTROY",
 			"self")
 ;
-#line 605 "./GTKWin.xs"
+#line 742 "./GTKWin.xs"
         pcap_close(self);
-#line 1544 "./GTKWin.c"
+#line 1762 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1554,12 +1772,12 @@ XS_EUPXS(XS_PCAP__If_find_all_devs)
     PERL_UNUSED_VAR(items); /* -W */
     {
 	PCAP__If	RETVAL;
-#line 612 "./GTKWin.xs"
+#line 749 "./GTKWin.xs"
         char errbuf[PCAP_ERRBUF_SIZE];
         if (pcap_findalldevs(&RETVAL, errbuf) == -1) {
             Perl_croak("%s", errbuf);
         }
-#line 1563 "./GTKWin.c"
+#line 1781 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1602,7 +1820,7 @@ XS_EUPXS(XS_PCAP__If_open_live)
 		);
 	}
 ;
-#line 622 "./GTKWin.xs"
+#line 759 "./GTKWin.xs"
         char errbuf[PCAP_ERRBUF_SIZE];
         pcap_if_t *dev = NULL;
         for (dev = self; dev; dev = dev->next) {
@@ -1629,7 +1847,7 @@ XS_EUPXS(XS_PCAP__If_open_live)
         if (RETVAL == NULL) {
             Perl_croak("%s", errbuf);
         }
-#line 1633 "./GTKWin.c"
+#line 1851 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1659,11 +1877,49 @@ XS_EUPXS(XS_PCAP__If_DESTROY)
 			"PCAP::If::DESTROY",
 			"self")
 ;
-#line 654 "./GTKWin.xs"
+#line 791 "./GTKWin.xs"
         pcap_freealldevs(self);
-#line 1665 "./GTKWin.c"
+#line 1883 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
+}
+
+
+XS_EUPXS(XS_Gtk__Editable_get_text); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Gtk__Editable_get_text)
+{
+    dVAR; dXSARGS;
+    if (items != 1)
+       croak_xs_usage(cv,  "self");
+    {
+	const char *	RETVAL;
+	dXSTARG;
+	Gtk__Editable	self;
+
+    if (sv_isobject(ST(0))) {
+        IV integer_pointer = SvIV(SvRV(ST(0)));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_editable_get_type())) {
+                self = GTK_EDITABLE (gobject);
+            } else {
+                croak("Not implementing GTK_EDITABLE");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::Editable object");
+    }
+;
+#line 798 "./GTKWin.xs"
+        RETVAL = gtk_editable_get_text(self);
+#line 1919 "./GTKWin.c"
+	sv_setpv((SV*)TARG, RETVAL);
+	ST(0) = TARG;
+    }
+    XSRETURN(1);
 }
 
 
@@ -1675,10 +1931,10 @@ XS_EUPXS(XS_Gtk__Entry_new)
     PERL_UNUSED_VAR(items); /* -W */
     {
 	Gtk__Entry	RETVAL;
-#line 661 "./GTKWin.xs"
+#line 807 "./GTKWin.xs"
         RETVAL = GTK_ENTRY (gtk_entry_new());
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 1682 "./GTKWin.c"
+#line 1938 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1698,10 +1954,10 @@ XS_EUPXS(XS_Gtk__CheckButton_new)
     PERL_UNUSED_VAR(items); /* -W */
     {
 	Gtk__CheckButton	RETVAL;
-#line 671 "./GTKWin.xs"
+#line 817 "./GTKWin.xs"
         RETVAL = GTK_CHECK_BUTTON (gtk_check_button_new());
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 1705 "./GTKWin.c"
+#line 1961 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1710,6 +1966,78 @@ XS_EUPXS(XS_Gtk__CheckButton_new)
 	}
     }
     XSRETURN(1);
+}
+
+
+XS_EUPXS(XS_Gtk__CheckButton_get_active); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Gtk__CheckButton_get_active)
+{
+    dVAR; dXSARGS;
+    if (items != 1)
+       croak_xs_usage(cv,  "self");
+    {
+	bool	RETVAL;
+	Gtk__CheckButton	self;
+
+    if (sv_isobject(ST(0))) {
+        IV integer_pointer = SvIV(SvRV(ST(0)));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_check_button_get_type())) {
+                self = GTK_CHECK_BUTTON (gobject);
+            } else {
+                croak("Not implementing GTK_CHECK_BUTTON");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::CheckButton object");
+    }
+;
+#line 825 "./GTKWin.xs"
+        RETVAL = gtk_check_button_get_active(self);
+#line 2002 "./GTKWin.c"
+	ST(0) = boolSV(RETVAL);
+    }
+    XSRETURN(1);
+}
+
+
+XS_EUPXS(XS_Gtk__Button_set_label); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Gtk__Button_set_label)
+{
+    dVAR; dXSARGS;
+    if (items != 2)
+       croak_xs_usage(cv,  "button, label");
+    {
+	Gtk__Button	button;
+	char *	label = (char *)SvPV_nolen(ST(1))
+;
+
+    if (sv_isobject(ST(0))) {
+        IV integer_pointer = SvIV(SvRV(ST(0)));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_button_get_type())) {
+                button = GTK_BUTTON (gobject);
+            } else {
+                croak("Not implementing GTK_BUTTON");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::Button object");
+    }
+;
+#line 834 "./GTKWin.xs"
+        gtk_button_set_label(button, label);
+#line 2039 "./GTKWin.c"
+    }
+    XSRETURN_EMPTY;
 }
 
 
@@ -1725,10 +2053,10 @@ XS_EUPXS(XS_Gtk__Button_new)
 ;
 	char *	label = (char *)SvPV_nolen(ST(1))
 ;
-#line 681 "./GTKWin.xs"
+#line 839 "./GTKWin.xs"
         RETVAL = GTK_BUTTON (gtk_button_new_with_label(label));
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 1732 "./GTKWin.c"
+#line 2060 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1768,9 +2096,9 @@ XS_EUPXS(XS_Gtk__Window_set_title)
         croak("Expected Gtk::Window object");
     }
 ;
-#line 691 "./GTKWin.xs"
+#line 849 "./GTKWin.xs"
         gtk_window_set_title(self, title);
-#line 1774 "./GTKWin.c"
+#line 2102 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1786,10 +2114,10 @@ XS_EUPXS(XS_Gtk__Window_new)
 	Gtk__Window	RETVAL;
 	SV *	class = ST(0)
 ;
-#line 696 "./GTKWin.xs"
+#line 854 "./GTKWin.xs"
         RETVAL = GTK_WINDOW (gtk_window_new());
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 1793 "./GTKWin.c"
+#line 2121 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -1831,9 +2159,9 @@ XS_EUPXS(XS_Gtk__Window_set_default_size)
         croak("Expected Gtk::Window object");
     }
 ;
-#line 704 "./GTKWin.xs"
+#line 862 "./GTKWin.xs"
         gtk_window_set_default_size(win, width, height);
-#line 1837 "./GTKWin.c"
+#line 2165 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1867,9 +2195,9 @@ XS_EUPXS(XS_Gtk__Window_set_resizable)
         croak("Expected Gtk::Window object");
     }
 ;
-#line 709 "./GTKWin.xs"
+#line 867 "./GTKWin.xs"
         gtk_window_set_resizable(win, !!resizable);
-#line 1873 "./GTKWin.c"
+#line 2201 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1920,9 +2248,9 @@ XS_EUPXS(XS_Gtk__Window_set_child)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 714 "./GTKWin.xs"
+#line 872 "./GTKWin.xs"
         gtk_window_set_child(win, child);
-#line 1926 "./GTKWin.c"
+#line 2254 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1954,9 +2282,9 @@ XS_EUPXS(XS_Gtk__Window_present)
         croak("Expected Gtk::Window object");
     }
 ;
-#line 719 "./GTKWin.xs"
+#line 877 "./GTKWin.xs"
         gtk_window_present(win);
-#line 1960 "./GTKWin.c"
+#line 2288 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -1976,10 +2304,10 @@ XS_EUPXS(XS_Gtk__Box_new)
 ;
 	int	spacing = (int)SvIV(ST(2))
 ;
-#line 726 "./GTKWin.xs"
+#line 884 "./GTKWin.xs"
         RETVAL = GTK_BOX (gtk_box_new(orientation, spacing));
         g_object_ref_sink(RETVAL);
-#line 1983 "./GTKWin.c"
+#line 2311 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2019,9 +2347,9 @@ XS_EUPXS(XS_Gtk__Widget_add_css_class)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 736 "./GTKWin.xs"
+#line 894 "./GTKWin.xs"
         gtk_widget_add_css_class(widget, class);
-#line 2025 "./GTKWin.c"
+#line 2353 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2054,10 +2382,10 @@ XS_EUPXS(XS_Gtk__Widget_get_display)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 741 "./GTKWin.xs"
+#line 899 "./GTKWin.xs"
         RETVAL = gtk_widget_get_display(widget);
         g_object_ref_sink(RETVAL);
-#line 2061 "./GTKWin.c"
+#line 2389 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2097,9 +2425,9 @@ XS_EUPXS(XS_Gtk__Widget_set_valign)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 749 "./GTKWin.xs"
+#line 907 "./GTKWin.xs"
         gtk_widget_set_valign(widget, constant);
-#line 2103 "./GTKWin.c"
+#line 2431 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2133,9 +2461,9 @@ XS_EUPXS(XS_Gtk__Widget_set_halign)
         croak("Expected Gtk::Widget object");
     }
 ;
-#line 754 "./GTKWin.xs"
+#line 912 "./GTKWin.xs"
         gtk_widget_set_halign(widget, constant);
-#line 2139 "./GTKWin.c"
+#line 2467 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2155,10 +2483,10 @@ XS_EUPXS(XS_Gtk__Application_new)
 ;
 	size_t	flags = (size_t)SvUV(ST(2))
 ;
-#line 761 "./GTKWin.xs"
+#line 919 "./GTKWin.xs"
         RETVAL = GTK_APPLICATION (gtk_application_new(app_name, flags));
         g_object_ref_sink(G_OBJECT (RETVAL));
-#line 2162 "./GTKWin.c"
+#line 2490 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2167,6 +2495,37 @@ XS_EUPXS(XS_Gtk__Application_new)
 	}
     }
     XSRETURN(1);
+}
+
+
+XS_EUPXS(XS_Gio__Application_timeout_add); /* prototype to pass -Wmissing-prototypes */
+XS_EUPXS(XS_Gio__Application_timeout_add)
+{
+    dVAR; dXSARGS;
+    if (items != 3)
+       croak_xs_usage(cv,  "class, interval, callback");
+    {
+	SV *	class = ST(0)
+;
+	unsigned int	interval = (unsigned int)SvUV(ST(1))
+;
+	SV *	callback = ST(2)
+;
+#line 929 "./GTKWin.xs"
+       if (!SvROK(callback) || SvTYPE(SvRV(callback)) != SVt_PVCV) {
+            croak("callback must be a coderef");
+        }
+
+        SvREFCNT_inc(callback);
+
+        g_timeout_add(
+            interval,
+            perl_timeout_func,
+            callback
+        );
+#line 2527 "./GTKWin.c"
+    }
+    XSRETURN_EMPTY;
 }
 
 
@@ -2196,7 +2555,7 @@ XS_EUPXS(XS_Gio__Application_run)
         croak("Expected Gio::Application object");
     }
 ;
-#line 771 "./GTKWin.xs"
+#line 945 "./GTKWin.xs"
         int argc = items - 1;
         char **argv = malloc((argc + 1) * sizeof(*argv));
 
@@ -2211,7 +2570,7 @@ XS_EUPXS(XS_Gio__Application_run)
         g_application_run(app, argc, argv);
 
         free(argv);
-#line 2215 "./GTKWin.c"
+#line 2574 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2229,10 +2588,10 @@ XS_EUPXS(XS_Gio__File_new)
 ;
 	unsigned char *	path = (unsigned char *)SvPV_nolen(ST(1))
 ;
-#line 791 "./GTKWin.xs"
+#line 965 "./GTKWin.xs"
         RETVAL = g_file_new_for_path(path);
         g_object_ref_sink(RETVAL);
-#line 2236 "./GTKWin.c"
+#line 2595 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2273,10 +2632,10 @@ XS_EUPXS(XS_Gtk__Picture_new)
         croak("Expected Gdk::Texture object");
     }
 ;
-#line 801 "./GTKWin.xs"
+#line 975 "./GTKWin.xs"
         RETVAL = GTK_PICTURE (gtk_picture_new_for_paintable(GDK_PAINTABLE (texture)));
         g_object_ref_sink(RETVAL);
-#line 2280 "./GTKWin.c"
+#line 2639 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2296,10 +2655,10 @@ XS_EUPXS(XS_Gtk__CssProvider_new)
     PERL_UNUSED_VAR(items); /* -W */
     {
 	Gtk__CssProvider	RETVAL;
-#line 811 "./GTKWin.xs"
+#line 985 "./GTKWin.xs"
         RETVAL =  gtk_css_provider_new();
         g_object_ref_sink(RETVAL);
-#line 2303 "./GTKWin.c"
+#line 2662 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2339,9 +2698,9 @@ XS_EUPXS(XS_Gtk__CssProvider_load_from_path)
         croak("Expected Gtk::CssProvider object");
     }
 ;
-#line 819 "./GTKWin.xs"
+#line 993 "./GTKWin.xs"
         gtk_css_provider_load_from_path(self, path);
-#line 2345 "./GTKWin.c"
+#line 2704 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2394,9 +2753,9 @@ XS_EUPXS(XS_Gdk__Display_add_css_provider)
         croak("Expected Gtk::CssProvider object");
     }
 ;
-#line 826 "./GTKWin.xs"
+#line 1000 "./GTKWin.xs"
         gtk_style_context_add_provider_for_display(self, GTK_STYLE_PROVIDER (provider), priority);
-#line 2400 "./GTKWin.c"
+#line 2759 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2431,14 +2790,14 @@ XS_EUPXS(XS_Gdk__Texture_new)
         croak("Expected Gio::File object");
     }
 ;
-#line 833 "./GTKWin.xs"
+#line 1007 "./GTKWin.xs"
         GError *error = NULL;
         RETVAL = gdk_texture_new_from_file(file, &error);
         g_object_ref_sink(RETVAL);
         if (error != NULL) {
             Perl_croak(error->message);
         }
-#line 2442 "./GTKWin.c"
+#line 2801 "./GTKWin.c"
 	{
 	    SV * RETVALSV;
 	    RETVALSV = sv_newmortal();
@@ -2505,14 +2864,14 @@ XS_EUPXS(XS_G__Object_bind_property_full)
         croak("Expected G::Object object");
     }
 ;
-#line 847 "./GTKWin.xs"
+#line 1021 "./GTKWin.xs"
         BindingUserdata *userdata = malloc(sizeof *userdata);
         SvREFCNT_inc(transform_to);
         SvREFCNT_inc(transform_from);
         userdata->to = transform_to;
         userdata->from = transform_from;
         g_object_bind_property_full(self, self_property, target, target_property, flags, binding_callback_to, binding_callback_from, userdata, NULL);
-#line 2516 "./GTKWin.c"
+#line 2875 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2548,7 +2907,7 @@ XS_EUPXS(XS_G__Object_connect)
         croak("Expected G::Object object");
     }
 ;
-#line 858 "./GTKWin.xs"
+#line 1032 "./GTKWin.xs"
         if (!SvROK(callback) || SvTYPE(SvRV(callback)) != SVt_PVCV) {
             croak("callback must be a coderef");
         }
@@ -2561,7 +2920,7 @@ XS_EUPXS(XS_G__Object_connect)
             G_CALLBACK(perl_signal_callback),
             callback
         );
-#line 2565 "./GTKWin.c"
+#line 2924 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2593,11 +2952,11 @@ XS_EUPXS(XS_G__Object_DESTROY)
         croak("Expected G::Object object");
     }
 ;
-#line 874 "./GTKWin.xs"
+#line 1048 "./GTKWin.xs"
         if (obj) {
             g_object_unref(obj);
         }
-#line 2601 "./GTKWin.c"
+#line 2960 "./GTKWin.c"
     }
     XSRETURN_EMPTY;
 }
@@ -2630,6 +2989,9 @@ XS_EXTERNAL(boot_GTKWin)
 #  endif
 #endif
 
+        newXS_deffile("Front::Net::IfIp::to_reach", XS_Front__Net__IfIp_to_reach);
+        newXS_deffile("Gtk::AlertDialog::new", XS_Gtk__AlertDialog_new);
+        newXS_deffile("Gtk::AlertDialog::show", XS_Gtk__AlertDialog_show);
         newXS_deffile("Gtk::Overlay::new", XS_Gtk__Overlay_new);
         newXS_deffile("Gtk::Overlay::add_overlay", XS_Gtk__Overlay_add_overlay);
         newXS_deffile("Gtk::Overlay::set_child", XS_Gtk__Overlay_set_child);
@@ -2663,8 +3025,11 @@ XS_EXTERNAL(boot_GTKWin)
         newXS_deffile("PCAP::If::find_all_devs", XS_PCAP__If_find_all_devs);
         newXS_deffile("PCAP::If::open_live", XS_PCAP__If_open_live);
         newXS_deffile("PCAP::If::DESTROY", XS_PCAP__If_DESTROY);
+        newXS_deffile("Gtk::Editable::get_text", XS_Gtk__Editable_get_text);
         newXS_deffile("Gtk::Entry::new", XS_Gtk__Entry_new);
         newXS_deffile("Gtk::CheckButton::new", XS_Gtk__CheckButton_new);
+        newXS_deffile("Gtk::CheckButton::get_active", XS_Gtk__CheckButton_get_active);
+        newXS_deffile("Gtk::Button::set_label", XS_Gtk__Button_set_label);
         newXS_deffile("Gtk::Button::new", XS_Gtk__Button_new);
         newXS_deffile("Gtk::Window::set_title", XS_Gtk__Window_set_title);
         newXS_deffile("Gtk::Window::new", XS_Gtk__Window_new);
@@ -2678,6 +3043,7 @@ XS_EXTERNAL(boot_GTKWin)
         newXS_deffile("Gtk::Widget::set_valign", XS_Gtk__Widget_set_valign);
         newXS_deffile("Gtk::Widget::set_halign", XS_Gtk__Widget_set_halign);
         newXS_deffile("Gtk::Application::new", XS_Gtk__Application_new);
+        newXS_deffile("Gio::Application::timeout_add", XS_Gio__Application_timeout_add);
         newXS_deffile("Gio::Application::run", XS_Gio__Application_run);
         newXS_deffile("Gio::File::new", XS_Gio__File_new);
         newXS_deffile("Gtk::Picture::new", XS_Gtk__Picture_new);

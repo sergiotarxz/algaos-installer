@@ -109,6 +109,16 @@ Gtk::Label T_PTROBJ_GOBJECT_GTK_LABEL
 
 GtkLabel * T_PTROBJ_GOBJECT_GTK_LABEL
 
+
+Gtk::Editable T_PTROBJ_GOBJECT_GTK_EDITABLE
+
+GtkEditable * T_PTROBJ_GOBJECT_GTK_EDITABLE
+
+
+Gtk::AlertDialog T_PTROBJ_GOBJECT_GTK_ALERT_DIALOG
+
+GtkAlertDialog * T_PTROBJ_GOBJECT_GTK_ALERT_DIALOG
+
 INPUT
 
 T_PTROBJ_GOBJECT_GTK_APPLICATION
@@ -452,6 +462,44 @@ T_PTROBJ_GOBJECT_GTK_LABEL
         croak("Expected Gtk::Label object");
     }
 
+
+T_PTROBJ_GOBJECT_GTK_EDITABLE
+    if (sv_isobject($arg)) {
+        IV integer_pointer = SvIV(SvRV($arg));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_editable_get_type())) {
+                $var = GTK_EDITABLE (gobject);
+            } else {
+                croak("Not implementing GTK_EDITABLE");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::Editable object");
+    }
+
+
+T_PTROBJ_GOBJECT_GTK_ALERT_DIALOG
+    if (sv_isobject($arg)) {
+        IV integer_pointer = SvIV(SvRV($arg));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_alert_dialog_get_type())) {
+                $var = GTK_ALERT_DIALOG (gobject);
+            } else {
+                croak("Not implementing GTK_ALERT_DIALOG");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::AlertDialog object");
+    }
+
 OUTPUT
 
 T_PTROBJ_GOBJECT_GTK_APPLICATION
@@ -524,4 +572,12 @@ T_PTROBJ_GOBJECT_GTK_GRID
 
 T_PTROBJ_GOBJECT_GTK_LABEL
     sv_setref_pv($arg, "Gtk::Label", (void *)$var);
+
+
+T_PTROBJ_GOBJECT_GTK_EDITABLE
+    sv_setref_pv($arg, "Gtk::Editable", (void *)$var);
+
+
+T_PTROBJ_GOBJECT_GTK_ALERT_DIALOG
+    sv_setref_pv($arg, "Gtk::AlertDialog", (void *)$var);
 

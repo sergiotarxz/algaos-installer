@@ -20,6 +20,49 @@ typedef struct {
     SV *to;
 } BindingUserdata;
 
+gboolean
+perl_timeout_func(gpointer userdata) {
+    SV *callback = (SV *)userdata;
+    if (!SvOK(callback)) {
+        return FALSE;
+    }
+
+    dSP;
+
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+
+    PUTBACK;
+
+    int count = call_sv(callback, G_SCALAR | G_EVAL);
+    bool out = false;
+
+    SPAGAIN;
+
+    if (SvTRUE(ERRSV)) {
+        Perl_warn("Perl binding callback failed: %s",
+             SvPV_nolen(ERRSV));
+
+        sv_setsv(ERRSV, &PL_sv_undef);
+        count = 0;
+    }
+
+    if (count >= 1) {
+        SV *ret = POPs;
+
+        out = SvTRUE(ret);
+    }
+
+    PUTBACK;
+
+    FREETMPS;
+    LEAVE;
+
+    return out;
+}
+
 static gboolean
 sv_to_gvalue(SV *sv, GValue *value)
 {
@@ -436,12 +479,106 @@ perl_signal_callback(GObject *object, gpointer data)
     XPUSHs(sv_2mortal(newSViv(PTR2IV(object))));
     PUTBACK;
 
-    call_sv(callback, G_DISCARD);
+    call_sv(callback, G_DISCARD | G_EVAL);
+
+    SPAGAIN;
+
+    if (SvTRUE(ERRSV)) {
+        Perl_warn("Unhandled GObject connect callback error: %s",
+                  SvPV_nolen(ERRSV));
+
+        sv_setsv(ERRSV, &PL_sv_undef);
+    }
+
+    PUTBACK;
 
     FREETMPS;
     LEAVE;
 }
 
+MODULE = GTKWin PACKAGE = Front::Net::IfIp
+
+char *
+to_reach(SV *class, const char *dest)
+    CODE:
+        struct addrinfo hints = {0};
+        struct addrinfo *res = NULL;
+        int sock = -1;
+        int rc;
+
+        hints.ai_family = AF_INET;          /* IPv4 only */
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_protocol = IPPROTO_UDP;
+
+        rc = getaddrinfo(dest, "53", &hints, &res);
+        if (rc != 0) {
+            Perl_croak("getaddrinfo(%s): %s",
+                       dest, gai_strerror(rc));
+        }
+
+        sock = socket(res->ai_family,
+                      res->ai_socktype,
+                      res->ai_protocol);
+        if (sock < 0) {
+            int err = errno;
+            freeaddrinfo(res);
+            Perl_croak("socket failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
+            int err = errno;
+            freeaddrinfo(res);
+            close(sock);
+            Perl_croak("connect failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        freeaddrinfo(res);
+
+        struct sockaddr_in local;
+        socklen_t len = sizeof(local);
+
+        if (getsockname(sock, (struct sockaddr *)&local, &len) < 0) {
+            int err = errno;
+            close(sock);
+            Perl_croak("getsockname failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        char *ip;
+        Newxz(ip, INET_ADDRSTRLEN + 1, char);
+
+        if (inet_ntop(AF_INET,
+                      &local.sin_addr,
+                      ip,
+                      INET_ADDRSTRLEN + 1) == NULL) {
+            int err = errno;
+            Safefree(ip);
+            close(sock);
+            Perl_croak("inet_ntop failed: errno=%d (%s)",
+                       err, strerror(err));
+        }
+
+        close(sock);
+        RETVAL = ip;
+    OUTPUT:
+        RETVAL
+
+MODULE = GTKWin PACKAGE = Gtk::AlertDialog
+
+Gtk::AlertDialog
+new(SV *class, char *title, char *detail)
+    CODE:
+        RETVAL = gtk_alert_dialog_new(title);
+        gtk_alert_dialog_set_detail(RETVAL, detail);
+    OUTPUT:
+        RETVAL
+
+void
+show(Gtk::AlertDialog self, Gtk::Window parent)
+    CODE:
+        gtk_alert_dialog_show(self, parent);
 
 MODULE = GTKWin PACKAGE = Gtk::Overlay
 
@@ -653,6 +790,15 @@ DESTROY(PCAP::If self)
     CODE:
         pcap_freealldevs(self);
 
+MODULE = GTKWin PACKAGE = Gtk::Editable
+
+const char *
+get_text(Gtk::Editable self)
+    CODE:
+        RETVAL = gtk_editable_get_text(self);
+    OUTPUT:
+        RETVAL
+
 MODULE = GTKWin PACKAGE = Gtk::Entry
 
 Gtk::Entry
@@ -673,7 +819,19 @@ new(...)
     OUTPUT:
         RETVAL
 
+bool
+get_active(Gtk::CheckButton self)
+    CODE:
+        RETVAL = gtk_check_button_get_active(self);
+    OUTPUT:
+        RETVAL
+
 MODULE = GTKWin PACKAGE = Gtk::Button
+
+void
+set_label(Gtk::Button button, char *label)
+    CODE:
+        gtk_button_set_label(button, label);
 
 Gtk::Button
 new(SV *class, char *label)
@@ -764,6 +922,22 @@ new(SV *class, char *app_name, size_t flags)
         RETVAL
 
 MODULE = GTKWin PACKAGE = Gio::Application
+
+void
+timeout_add(SV *class, unsigned int interval, SV *callback)
+    CODE:
+       if (!SvROK(callback) || SvTYPE(SvRV(callback)) != SVt_PVCV) {
+            croak("callback must be a coderef");
+        }
+
+        SvREFCNT_inc(callback);
+
+        g_timeout_add(
+            interval,
+            perl_timeout_func,
+            callback
+        );
+ 
 
 void
 run(Gio::Application app, ...)

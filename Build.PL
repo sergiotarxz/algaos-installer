@@ -20,6 +20,8 @@ my @types = (
     [ 'Gtk::CssProvider', 'GtkCssProvider', 'GTK_CSS_PROVIDER' ],
     [ 'Gtk::Grid', 'GtkGrid', 'GTK_GRID' ],
     [ 'Gtk::Label', 'GtkLabel', 'GTK_LABEL' ],
+    [ 'Gtk::Editable', 'GtkEditable', 'GTK_EDITABLE' ],
+    [ 'Gtk::AlertDialog', 'GtkAlertDialog', 'GTK_ALERT_DIALOG' ],
 );
 
 my @constants = (
@@ -52,6 +54,9 @@ my %parentships = (
     'Gtk::CssProvider' => [
         'G::Object',
     ],
+    'Gtk::AlertDialog' => [
+        'G::Object',
+    ],
     'Gtk::Application' => [
         'Gio::Application',
     ],
@@ -62,7 +67,7 @@ my %parentships = (
         'Gtk::Widget',
     ],
     'Gtk::Entry' => [
-        'Gtk::Widget',
+        'Gtk::Widget', 'Gtk::Editable',
     ],
     'Gtk::Picture' => [
         'Gtk::Widget',
