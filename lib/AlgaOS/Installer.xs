@@ -471,6 +471,84 @@ new(SV *class, char *label)
     OUTPUT:
         RETVAL
 
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Dropdown
+
+Gtk::Dropdown
+new(SV *class, AV *items)
+    CODE:
+        SSize_t count = av_count(items);
+        const char **strings = malloc(
+            sizeof(char *) * (count + 1)
+        );
+
+        for (SSize_t i = 0; i < count; i++) {
+            SV **item = av_fetch(items, i, 0);
+
+            if (item == NULL || !SvOK(*item)) {
+                strings[i] = "";
+            } else {
+                strings[i] = SvPV_nolen(*item);
+            }
+        }
+
+        strings[count] = NULL;
+
+        GtkStringList *list = gtk_string_list_new(strings);
+
+        RETVAL = GTK_DROP_DOWN(
+            gtk_drop_down_new(
+                G_LIST_MODEL(list),
+                NULL
+            )
+        );
+
+        free(strings);
+
+        g_object_ref_sink(RETVAL);
+    OUTPUT:
+        RETVAL
+
+
+const char *
+selected_text(Gtk::Dropdown self)
+    CODE:
+        guint position = gtk_drop_down_get_selected(self);
+
+        if (position == GTK_INVALID_LIST_POSITION) {
+            RETVAL = NULL;
+        } else {
+            GListModel *model = gtk_drop_down_get_model(self);
+
+            RETVAL = gtk_string_list_get_string(
+                GTK_STRING_LIST(model),
+                position
+            );
+        }
+    OUTPUT:
+        RETVAL
+
+guint
+selected(Gtk::Dropdown self)
+	CODE:
+		RETVAL = gtk_drop_down_get_selected(self);
+	OUTPUT:
+		RETVAL
+
+MODULE = AlgaOS::Installer PACKAGE = Gtk::ScrolledWindow
+
+Gtk::ScrolledWindow
+new(SV *class)
+    CODE:
+        RETVAL = GTK_SCROLLED_WINDOW (gtk_scrolled_window_new());
+        g_object_ref_sink(RETVAL);
+    OUTPUT:
+        RETVAL
+
+void
+set_child(Gtk::ScrolledWindow self, Gtk::Widget widget)
+    CODE:
+        gtk_scrolled_window_set_child(self, widget);
+
 MODULE = AlgaOS::Installer PACKAGE = Gtk::Window
 
 void

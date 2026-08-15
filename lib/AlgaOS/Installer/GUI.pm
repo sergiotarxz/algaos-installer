@@ -7,82 +7,25 @@ use warnings;
 use Moo;
 use AlgaOS::Installer;
 use AlgaOS::Installer::Util;
+use List::Util;
+use JSON;
 
-has app                     => ( is => 'lazy' );
-has win                     => ( is => 'rw' );
-has const                   => ( is => 'lazy' );
-has pipe_name               => ( is => 'ro', required => 1 );
-has secret                  => ( is => 'ro', required => 1 );
-has _pending_client_packets => ( is => 'lazy' );
-has _grid_row               => ( is => 'rw', default => sub { 0 } );
-has _packet_handlers        => ( is => 'lazy' );
-has _proxy_started          => ( is => 'rw' );
-has _server_entry           => ( is => 'rw' );
-has _is_local_check         => ( is => 'rw' );
-has _start_proxy_button     => ( is => 'rw' );
-has _proxy_others           => ( is => 'rw' );
-
-sub _get_status_handler( $self, $client, $packet ) {
-    $self->_start_proxy_button->set_label(
-        !$packet->{started} ? 'Start Proxy' : 'End Proxy' );
-    $self->_proxy_started( $packet->{started} );
-    $self->app->timeout_add(
-        1000,
-        sub {
-            push $self->_pending_client_packets->@*, {
-                type     => 'GET_STATUS_PROXY',
-                callback => sub( $client, $packet ) {
-                    $self->_get_status_handler( $client, $packet );
-                }
-            };
-            return 0;
-        }
-    );
-}
-
-sub _handle_packets_gui( $self, $client, $buf ) {
-    state $stored_partial_message = "";
-    return if !defined $buf;
-    my @messages = split "\n", $buf;
-    if ( !@messages ) {
-        warn "No messages, why are we here?";
-        return;
-    }
-    $messages[0] = $stored_partial_message . $messages[0];
-    $stored_partial_message = "";
-    if ( $buf !~ /\n$/s ) {
-        $stored_partial_message = pop @messages;
-    }
-    my @packets = map {
-        my $return = eval { from_json($_) };
-        $return ? ($return) : ();
-    } @messages;
-    for my $packet (@packets) {
-        $self->_handle_packet_gui( $client, $packet );
-    }
-}
-
-sub _handle_packet_gui( $self, $client, $packet ) {
-
-#    print Data::Dumper::Dumper $packet;
-    my $serial   = $packet->{serial};
-    my $callback = $self->_packet_handlers->{$serial};
-    if ( defined $callback ) {
-        $callback->( $client, $packet );
-    }
-}
-
-sub _build__packet_handlers {
-    return {};
-}
+has app                        => ( is => 'lazy' );
+has win                        => ( is => 'rw' );
+has const                      => ( is => 'lazy' );
+has pipe_name                  => ( is => 'ro', required => 1 );
+has secret                     => ( is => 'ro', required => 1 );
+has _grid_row                  => ( is => 'rw', default  => sub { 0 } );
+has _proxy_started             => ( is => 'rw' );
+has _hostname_entry            => ( is => 'rw' );
+has _username_entry            => ( is => 'rw' );
+has _password_entry            => ( is => 'rw' );
+has _start_installation_button => ( is => 'rw' );
+has _proxy_others              => ( is => 'rw' );
 
 sub call_and_increment_grid_row( $self, $coderef ) {
     $coderef->();
     $self->_grid_row( $self->_grid_row + 1 );
-}
-
-sub _add_packet_handler( $self, $serial, $callback ) {
-    $self->_packet_handlers->{$serial} = $callback;
 }
 
 sub _build_const {
@@ -97,73 +40,115 @@ sub _create_main_grid($self) {
     my $const = $self->const;
     my $grid  = Gtk::Grid->new;
     $grid->add_css_class('transparent_background');
-    my $is_local_check = Gtk::CheckButton->new;
-    $self->_is_local_check($is_local_check);
-    $self->_is_local_check->set_halign( $const->GTK_ALIGN_START );
     $self->call_and_increment_grid_row(
         sub {
-            my $label = Gtk::Label->new('Proxy Star Wars Battlefront™');
+            my $label = Gtk::Label->new('Install AlgaOS');
             $label->add_css_class('title-1');
             $grid->attach( $label, 0, $self->_grid_row, 3, 1 );
         }
     );
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( Gtk::Label->new('Is the server in this computer?'),
+            $grid->attach( Gtk::Label->new('Select hostname'),
                 0, $self->_grid_row, 1, 1 );
-            $grid->attach( $self->_is_local_check, 1, $self->_grid_row, 1, 1 );
+            $grid->attach( $self->_hostname_entry, 1, $self->_grid_row, 1, 1 );
         }
     );
-    my $label_proxy_server =
-      Gtk::Label->new('Proxy for others in your lan in server direction?');
-    my $label_server_ip = Gtk::Label->new('Server IP');
-    my $negate_callback = sub {
-        my $from = shift;
-        return !$from;
-    };
-    my $proxy_others = Gtk::CheckButton->new;
-    $self->_proxy_others($proxy_others);
-    $self->_is_local_check->bind_property_full(
-        active => $label_proxy_server => visible => $const->G_BINDING_DEFAULT,
-        $negate_callback, undef
-    );
-    $self->_is_local_check->bind_property_full(
-        active  => $self->_proxy_others,
-        visible => $const->G_BINDING_DEFAULT,
-        $negate_callback, undef
-    );
-    $self->_is_local_check->bind_property_full(
-        active => $label_server_ip => visible => $const->G_BINDING_DEFAULT,
-        $negate_callback, undef
-    );
-    $self->_is_local_check->bind_property_full(
-        active  => $self->_server_entry,
-        visible => $const->G_BINDING_DEFAULT,
-        $negate_callback, undef
-    );
-    $self->_proxy_others->set_halign( $const->GTK_ALIGN_START );
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( $label_proxy_server,  0, $self->_grid_row, 1, 1 );
-            $grid->attach( $self->_proxy_others, 1, $self->_grid_row, 1, 1 );
+            $grid->attach( Gtk::Label->new('New user name'),
+                0, $self->_grid_row, 1, 1 );
+            $grid->attach( $self->_username_entry, 1, $self->_grid_row, 1, 1 );
+        }
+    );
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( Gtk::Label->new('New user password'),
+                0, $self->_grid_row, 1, 1 );
+            $grid->attach( $self->_password_entry, 1, $self->_grid_row, 1, 1 );
         }
     );
 
+    my $is_national = sub {
+        my $nation = shift;
+        return List::Util::any { $_ eq $nation }
+        (qw{Europe/Madrid Africa/Ceuta Atlantic/Canary});
+    };
+
+    my $is_europe = sub {
+        my $region = shift;
+        return $region =~ /Europe/;
+    };
+
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( $label_server_ip,     0, $self->_grid_row, 1, 1 );
-            $grid->attach( $self->_server_entry, 1, $self->_grid_row, 1, 1 );
+            $grid->attach( Gtk::Label->new('Set your timezone'),
+                0, $self->_grid_row, 1, 1 );
+            my @timezones = split /\s+/s, `timedatectl list-timezones`;
+            @timezones = grep { defined $_ } @timezones;
+            @timezones = sort {
+                return
+                     ( $b eq 'Europe/Madrid' ) <=> ( $a eq 'Europe/Madrid' )
+                  || $is_national->($b)        <=> $is_national->($a)
+                  || $is_europe->($b)          <=> $is_europe->($a)
+                  || $a cmp $b;
+            } @timezones;
+            my $dropdown = Gtk::Dropdown->new( [@timezones] );
+            $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
+        }
+    );
+
+    my $is_spain_spanish = sub {
+        my $lang = shift;
+        return $lang =~ /^es_ES/;
+    };
+    my $is_spanish = sub {
+        my $lang = shift;
+        return $lang =~ /^es/;
+    };
+    my $is_english = sub {
+        my $lang = shift;
+        return $lang =~ /^en/;
+    };
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( Gtk::Label->new('Set your language and region'),
+                0, $self->_grid_row, 1, 1 );
+            my @locales = split /\s+/s, `locale -a`;
+            @locales = grep { defined $_ && $_ =~ /utf8/ } @locales;
+            @locales = sort {
+                return
+                     $is_spain_spanish->($b) <=> $is_spain_spanish->($a)
+                  || $is_spanish->($b)       <=> $is_spanish->($a)
+                  || $is_english->($b)       <=> $is_english->($a)
+                  || $a cmp $b;
+            } @locales;
+            my $dropdown = Gtk::Dropdown->new( [@locales] );
+            $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
         }
     );
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( $self->_start_proxy_button,
+            $grid->attach( Gtk::Label->new('Set the installation destination'),
+                0, $self->_grid_row, 1, 1 );
+            my $block_devices = JSON::from_json(`lsblk --json -d -o NAME,SIZE,MODEL,TYPE,TRAN`);
+            my @block_devices = map {
+				join "\t", @$_{qw/name model size type tran/};
+            } $block_devices->{blockdevices}->@*;
+            @block_devices = grep { defined $_ } @block_devices;
+            my $dropdown = Gtk::Dropdown->new( [@block_devices] );
+            $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
+        }
+    );    
+
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( $self->_start_installation_button,
                 1, $self->_grid_row, 1, 1 );
         }
     );
-    $self->_start_proxy_button->connect(
+    $self->_start_installation_button->connect(
         clicked => sub {
-            $self->_on_start_proxy_button_press;
         }
     );
 
@@ -172,54 +157,12 @@ sub _create_main_grid($self) {
     return $grid;
 }
 
-sub _on_start_proxy_button_press($self) {
-    my $server_address = undef;
-    my $interface_ip   = undef;
-    my $is_local       = 0;
-    if ( !$self->_is_local_check->get_active ) {
-        $is_local       = 1;
-        $server_address = $self->_server_entry->get_text;
-        eval { $interface_ip = Front::Net::IfIp->to_reach($server_address); };
-        if ($@) {
-            my $dialog = Gtk::AlertDialog->new( "Error",
-                "Unable to find route to server: $server_address" );
-            $dialog->show( $self->win );
-            return;
-        }
-    }
-
-    if ( !$self->_proxy_started ) {
-        push $self->_pending_client_packets->@*, {
-            type           => 'START_PROXY',
-            server_address => $server_address,
-            interface_ip   => $interface_ip,
-            is_local       => $self->_is_local_check->get_active,
-            proxy_others   => $self->_proxy_others->get_active,
-            callback       => sub( $client, $packet ) {
-                my $message = $packet->{error} // $packet->{ok};
-                my $title   = "On it";
-                if ( defined $packet->{error} ) {
-                    $title   = "Error";
-                    $message = "Unable to start server: " . $message;
-                }
-                if (defined $message) {
-                my $dialog = Gtk::AlertDialog->new( $title, $message );
-                $dialog->show( $self->win );
-}
-            },
-        };
-    }
-    else {
-        push $self->_pending_client_packets->@*, { type => 'END PROXY', };
-    }
-}
-
 sub activate($self) {
-    my $const              = $self->const;
-    my $win                = Gtk::ApplicationWindow->new( $self->app );
-    my $start_proxy_button = Gtk::Button->new("Start Proxy");
-    $self->_start_proxy_button($start_proxy_button);
-    $win->set_title("Front Proxy");
+    my $const                     = $self->const;
+    my $win                       = Gtk::ApplicationWindow->new( $self->app );
+    my $start_installation_button = Gtk::Button->new("Start installation");
+    $self->_start_installation_button($start_installation_button);
+    $win->set_title("Install AlgaOS");
     my $display  = $win->get_display;
     my $provider = Gtk::CssProvider->new;
     $provider->load_from_path('style.css');
@@ -235,9 +178,15 @@ sub activate($self) {
     my $texture = Gdk::Texture->new($file);
     my $picture = Gtk::Picture->new($texture);
     $overlay->set_child($picture);
-    my $server_entry = Gtk::Entry->new;
-    $self->_server_entry($server_entry);
-    $overlay->add_overlay( $self->_create_main_grid );
+    my $hostname_entry = Gtk::Entry->new;
+    $self->_hostname_entry($hostname_entry);
+    my $username_entry = Gtk::Entry->new;
+    $self->_username_entry($username_entry);
+    my $password_entry = Gtk::Entry->new;
+    $self->_password_entry($password_entry);
+    my $scroll = Gtk::ScrolledWindow->new;
+    $scroll->set_child( $self->_create_main_grid );
+    $overlay->add_overlay($scroll);
     $win->set_child($overlay);
     $win->present;
 }
@@ -250,9 +199,5 @@ sub run($self) {
     );
 
     $self->app->run(@ARGV);
-}
-
-sub _build__pending_client_packets {
-    return [];
 }
 1;

@@ -6,6 +6,7 @@ my @types = (
     [ 'Gio::Application', 'GApplication', 'G_APPLICATION' ],
     [ 'Gtk::Box', 'GtkBox', 'GTK_BOX' ],
     [ 'Gtk::Window', 'GtkWindow', 'GTK_WINDOW' ],
+    [ 'Gtk::ScrolledWindow', 'GtkScrolledWindow', 'GTK_SCROLLED_WINDOW' ],
     [ 'Gtk::ApplicationWindow', 'GtkApplicationWindow', 'GTK_APPLICATION_WINDOW' ],
     [ 'Gtk::Overlay',       'GtkOverlay',     'GTK_OVERLAY' ],
     [ 'G::Object',          'GObject',        'G_OBJECT' ],
@@ -13,6 +14,7 @@ my @types = (
     [ 'Gtk::Button', 'GtkButton', 'GTK_BUTTON' ],
     [ 'Gtk::CheckButton', 'GtkCheckButton', 'GTK_CHECK_BUTTON' ],
     [ 'Gtk::Entry', 'GtkEntry', 'GTK_ENTRY' ],
+    [ 'Gtk::Dropdown', 'GtkDropDown', 'GTK_DROP_DOWN' ],
     [ 'Gtk::Picture', 'GtkPicture', 'GTK_PICTURE' ],
     [ 'Gio::File', 'GFile', 'G_FILE' ],
     [ 'Gdk::Texture', 'GdkTexture', 'GDK_TEXTURE' ],
@@ -64,6 +66,12 @@ my %parentships = (
         'Gtk::Widget'
     ],
     'Gtk::Window' => [
+        'Gtk::Widget',
+    ],
+    'Gtk::Dropdown' => [
+        'Gtk::Widget',
+    ],
+    'Gtk::ScrolledWindow' => [
         'Gtk::Widget',
     ],
     'Gtk::Entry' => [

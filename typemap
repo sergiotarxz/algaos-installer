@@ -40,6 +40,11 @@ Gtk::Window T_PTROBJ_GOBJECT_GTK_WINDOW
 GtkWindow * T_PTROBJ_GOBJECT_GTK_WINDOW
 
 
+Gtk::ScrolledWindow T_PTROBJ_GOBJECT_GTK_SCROLLED_WINDOW
+
+GtkScrolledWindow * T_PTROBJ_GOBJECT_GTK_SCROLLED_WINDOW
+
+
 Gtk::ApplicationWindow T_PTROBJ_GOBJECT_GTK_APPLICATION_WINDOW
 
 GtkApplicationWindow * T_PTROBJ_GOBJECT_GTK_APPLICATION_WINDOW
@@ -73,6 +78,11 @@ GtkCheckButton * T_PTROBJ_GOBJECT_GTK_CHECK_BUTTON
 Gtk::Entry T_PTROBJ_GOBJECT_GTK_ENTRY
 
 GtkEntry * T_PTROBJ_GOBJECT_GTK_ENTRY
+
+
+Gtk::Dropdown T_PTROBJ_GOBJECT_GTK_DROP_DOWN
+
+GtkDropDown * T_PTROBJ_GOBJECT_GTK_DROP_DOWN
 
 
 Gtk::Picture T_PTROBJ_GOBJECT_GTK_PICTURE
@@ -194,6 +204,25 @@ T_PTROBJ_GOBJECT_GTK_WINDOW
         }
     } else {
         croak("Expected Gtk::Window object");
+    }
+
+
+T_PTROBJ_GOBJECT_GTK_SCROLLED_WINDOW
+    if (sv_isobject($arg)) {
+        IV integer_pointer = SvIV(SvRV($arg));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_scrolled_window_get_type())) {
+                $var = GTK_SCROLLED_WINDOW (gobject);
+            } else {
+                croak("Not implementing GTK_SCROLLED_WINDOW");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::ScrolledWindow object");
     }
 
 
@@ -327,6 +356,25 @@ T_PTROBJ_GOBJECT_GTK_ENTRY
         }
     } else {
         croak("Expected Gtk::Entry object");
+    }
+
+
+T_PTROBJ_GOBJECT_GTK_DROP_DOWN
+    if (sv_isobject($arg)) {
+        IV integer_pointer = SvIV(SvRV($arg));
+        void *void_object = INT2PTR(void *, integer_pointer);
+        if (G_IS_OBJECT(void_object)) {
+            GObject *gobject = G_OBJECT (void_object);
+            if (G_TYPE_CHECK_INSTANCE_TYPE(gobject, gtk_drop_down_get_type())) {
+                $var = GTK_DROP_DOWN (gobject);
+            } else {
+                croak("Not implementing GTK_DROP_DOWN");
+            }
+        } else {
+            croak("Expected gobject");
+        }
+    } else {
+        croak("Expected Gtk::Dropdown object");
     }
 
 
@@ -518,6 +566,10 @@ T_PTROBJ_GOBJECT_GTK_WINDOW
     sv_setref_pv($arg, "Gtk::Window", (void *)$var);
 
 
+T_PTROBJ_GOBJECT_GTK_SCROLLED_WINDOW
+    sv_setref_pv($arg, "Gtk::ScrolledWindow", (void *)$var);
+
+
 T_PTROBJ_GOBJECT_GTK_APPLICATION_WINDOW
     sv_setref_pv($arg, "Gtk::ApplicationWindow", (void *)$var);
 
@@ -544,6 +596,10 @@ T_PTROBJ_GOBJECT_GTK_CHECK_BUTTON
 
 T_PTROBJ_GOBJECT_GTK_ENTRY
     sv_setref_pv($arg, "Gtk::Entry", (void *)$var);
+
+
+T_PTROBJ_GOBJECT_GTK_DROP_DOWN
+    sv_setref_pv($arg, "Gtk::Dropdown", (void *)$var);
 
 
 T_PTROBJ_GOBJECT_GTK_PICTURE
