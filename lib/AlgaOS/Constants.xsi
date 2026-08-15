@@ -1,4 +1,4 @@
-MODULE = Gtk::Win::Constants PACKAGE = Gtk::Win::Constants
+MODULE = AlgaOS::Installer PACKAGE = AlgaOS::Installer::Constants
 
 unsigned int
 GTK_ALIGN_FILL(...)
@@ -56,7 +56,7 @@ CODE:
 OUTPUT:
     RETVAL
 
-Gtk::Win::Constants
+AlgaOS::Installer::Constants
 new(...)
     CODE:
         RETVAL = malloc(sizeof *RETVAL);
@@ -65,7 +65,7 @@ new(...)
         RETVAL
 
 void
-DESTROY(Gtk::Win::Constants self)
+DESTROY(AlgaOS::Installer::Constants self)
     CODE:
         free(self);
 

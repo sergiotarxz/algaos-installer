@@ -2,11 +2,6 @@
 #include "perl.h"
 #include "XSUB.h"
 #include <gtk/gtk.h>
-#include <pcap.h>
-
-#ifdef __linux__
-#include <pcap/sll.h>
-#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -20,7 +15,7 @@ typedef struct {
     SV *to;
 } BindingUserdata;
 
-gboolean
+static gboolean
 perl_timeout_func(gpointer userdata) {
     SV *callback = (SV *)userdata;
     if (!SvOK(callback)) {
@@ -53,6 +48,9 @@ perl_timeout_func(gpointer userdata) {
         SV *ret = POPs;
 
         out = SvTRUE(ret);
+        if (!out) {
+            SvREFCNT_dec(callback);
+        }
     }
 
     PUTBACK;
@@ -154,8 +152,9 @@ sv_to_gvalue(SV *sv, GValue *value)
             return TRUE;
         }
 
-        if (!sv_isobject(sv))
+        if (!sv_isobject(sv)) {
             croak("Expected G::Object object");
+        }
 
         IV iv = SvIV(SvRV(sv));
         GObject *obj = INT2PTR(GObject *, iv);
@@ -249,154 +248,7 @@ gvalue_to_sv(const GValue *value)
           g_type_name(G_VALUE_TYPE(value)));
 }
 
-typedef struct {
-    SV *callback;
-    int datalink;
-} PCAPContext;
-
-typedef struct
-{
-    char src_ip[INET_ADDRSTRLEN];
-    char dst_ip[INET_ADDRSTRLEN];
-
-    unsigned short src_port;
-    unsigned short dst_port;
-
-    unsigned char src_mac[6];
-    unsigned char dst_mac[6];
-
-    const unsigned char *payload;
-    int payload_len;
-
-} UDPPacketInfo;
-
 #include "typedefs.h"
-
-static int
-parse_udp_packet(const unsigned char *packet,
-                 int datalink,
-                 int packet_len,
-                 UDPPacketInfo *info)
-{
-    const struct ether_header *eth;
-    const struct ip *ip;
-    const struct udphdr *udp;
-
-    int offset = 0;
-
-
-    if (packet_len < sizeof(struct ether_header))
-        return 0;
-
-
-    switch (datalink) {
-
-    case DLT_RAW:
-        offset = 0;
-        break;
-
-    case DLT_NULL:
-    case DLT_LOOP:
-        offset = sizeof(uint32_t);
-        break;
-
-    case DLT_EN10MB:
-        offset = sizeof(struct ether_header);
-        break;
-
-    #ifdef DLT_LINUX_SLL
-    case DLT_LINUX_SLL:
-        offset = sizeof(struct sll_header);
-        break;
-    #endif
-
-    default:
-        return 0;
-    }
-
-    if (packet_len < offset) {
-        return 0;
-    }
-
-    ip = (const struct ip *)(packet + offset);
-
-
-    if (ip->ip_p != IPPROTO_UDP)
-        return 0;
-
-
-    inet_ntop(AF_INET,
-              &ip->ip_src,
-              info->src_ip,
-              sizeof(info->src_ip));
-
-    inet_ntop(AF_INET,
-              &ip->ip_dst,
-              info->dst_ip,
-              sizeof(info->dst_ip));
-
-
-    offset += ip->ip_hl * 4;
-
-
-    if (packet_len < offset + sizeof(struct udphdr))
-        return 0;
-
-
-    udp = (const struct udphdr *)(packet + offset);
-
-
-    info->src_port = ntohs(udp->uh_sport);
-    info->dst_port = ntohs(udp->uh_dport);
-
-
-    offset += sizeof(struct udphdr);
-
-
-    info->payload = packet + offset;
-
-    info->payload_len =
-        packet_len - offset;
-
-
-    return 1;
-}
-
-static void
-gtk_win_pcap_handler(u_char *userdata,
-             const struct pcap_pkthdr *header,
-             const u_char *packet)
-{
-    PCAPContext *ctx = (PCAPContext *)userdata;
-    SV *callback = ctx->callback;
-    int datalink = ctx->datalink;
-    dSP;
-
-    UDPPacketInfo *udp_packet_info;
-
-    Newxz(udp_packet_info, 1, UDPPacketInfo);
-
-    parse_udp_packet(packet, datalink, header->caplen, udp_packet_info);
-
-    ENTER;
-    SAVETMPS;
-
-    PUSHMARK(SP);
-
-    XPUSHs(sv_2mortal(
-        sv_setref_pv(newSV(0),
-                     "PCAP::Packet",
-                     (void *)udp_packet_info)
-    ));
-
-    PUTBACK;
-
-    SvREFCNT_inc(callback);
-    call_sv(callback, G_DISCARD);
-
-    FREETMPS;
-    LEAVE;
-}
 
 static gboolean
 binding_callback(GBinding     *binding,
@@ -496,81 +348,12 @@ perl_signal_callback(GObject *object, gpointer data)
     LEAVE;
 }
 
-MODULE = GTKWin PACKAGE = Front::Net::IfIp
-
-char *
-to_reach(SV *class, const char *dest)
-    CODE:
-        struct addrinfo hints = {0};
-        struct addrinfo *res = NULL;
-        int sock = -1;
-        int rc;
-
-        hints.ai_family = AF_INET;          /* IPv4 only */
-        hints.ai_socktype = SOCK_DGRAM;
-        hints.ai_protocol = IPPROTO_UDP;
-
-        rc = getaddrinfo(dest, "53", &hints, &res);
-        if (rc != 0) {
-            Perl_croak("getaddrinfo(%s): %s",
-                       dest, gai_strerror(rc));
-        }
-
-        sock = socket(res->ai_family,
-                      res->ai_socktype,
-                      res->ai_protocol);
-        if (sock < 0) {
-            int err = errno;
-            freeaddrinfo(res);
-            Perl_croak("socket failed: errno=%d (%s)",
-                       err, strerror(err));
-        }
-
-        if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
-            int err = errno;
-            freeaddrinfo(res);
-            close(sock);
-            Perl_croak("connect failed: errno=%d (%s)",
-                       err, strerror(err));
-        }
-
-        freeaddrinfo(res);
-
-        struct sockaddr_in local;
-        socklen_t len = sizeof(local);
-
-        if (getsockname(sock, (struct sockaddr *)&local, &len) < 0) {
-            int err = errno;
-            close(sock);
-            Perl_croak("getsockname failed: errno=%d (%s)",
-                       err, strerror(err));
-        }
-
-        char *ip;
-        Newxz(ip, INET_ADDRSTRLEN + 1, char);
-
-        if (inet_ntop(AF_INET,
-                      &local.sin_addr,
-                      ip,
-                      INET_ADDRSTRLEN + 1) == NULL) {
-            int err = errno;
-            Safefree(ip);
-            close(sock);
-            Perl_croak("inet_ntop failed: errno=%d (%s)",
-                       err, strerror(err));
-        }
-
-        close(sock);
-        RETVAL = ip;
-    OUTPUT:
-        RETVAL
-
-MODULE = GTKWin PACKAGE = Gtk::AlertDialog
+MODULE = AlgaOS::Installer PACKAGE = Gtk::AlertDialog
 
 Gtk::AlertDialog
 new(SV *class, char *title, char *detail)
     CODE:
-        RETVAL = gtk_alert_dialog_new(title);
+        RETVAL = gtk_alert_dialog_new("%s", title);
         gtk_alert_dialog_set_detail(RETVAL, detail);
     OUTPUT:
         RETVAL
@@ -580,7 +363,7 @@ show(Gtk::AlertDialog self, Gtk::Window parent)
     CODE:
         gtk_alert_dialog_show(self, parent);
 
-MODULE = GTKWin PACKAGE = Gtk::Overlay
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Overlay
 
 Gtk::Overlay
 new(...)
@@ -600,7 +383,7 @@ set_child(Gtk::Overlay over, GtkWidget *child)
     CODE:
         gtk_overlay_set_child(over, child);
 
-MODULE = GTKWin PACKAGE = Gtk::Grid
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Grid
 
 Gtk::Grid
 new(...)
@@ -615,7 +398,7 @@ attach(Gtk::Grid self, Gtk::Widget widget, int column, int row, int width, int h
     CODE:
         gtk_grid_attach(self, widget, column, row, width, height);
 
-MODULE = GTKWin PACKAGE = Gtk::Label
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Label
 
 Gtk::Label
 new(SV *class, char *label)
@@ -627,7 +410,7 @@ new(SV *class, char *label)
 
 INCLUDE: Constants.xsi
 
-MODULE = GTKWin PACKAGE = Gtk::ApplicationWindow
+MODULE = AlgaOS::Installer PACKAGE = Gtk::ApplicationWindow
 
 Gtk::ApplicationWindow
 new(SV *class, Gtk::Application app)
@@ -637,160 +420,7 @@ new(SV *class, Gtk::Application app)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = PCAP::Packet
-
-void
-DESTROY(PCAP::Packet packet)
-    CODE:
-        Safefree(packet);
-
-char *
-src_ip(PCAP::Packet packet)
-    CODE:
-        RETVAL = packet->src_ip;
-    OUTPUT:
-        RETVAL
-
-char *
-dst_ip(PCAP::Packet packet)
-    CODE:
-        RETVAL = packet->dst_ip;
-    OUTPUT:
-        RETVAL
-
-unsigned short
-src_port(PCAP::Packet packet)
-    CODE:
-        RETVAL = packet->src_port;
-    OUTPUT:
-        RETVAL
-
-unsigned short
-dst_port(PCAP::Packet packet)
-    CODE:
-        RETVAL = packet->dst_port;
-    OUTPUT:
-        RETVAL
-
-SV *
-payload(PCAP::Packet packet)
-    CODE:
-        RETVAL = newSVpv(packet->payload, (STRLEN) packet->payload_len);
-    OUTPUT:
-        RETVAL
-
-MODULE = GTKWin PACKAGE = PCAP::Program
-
-void
-DESTROY(PCAP::Program self)
-    CODE:
-        pcap_freecode(self);
-        free(self);
-
-MODULE = GTKWin PACKAGE = PCAP::Handle
-
-int
-datalink(PCAP::Handle self)
-    CODE:
-        RETVAL = pcap_datalink(self);
-    OUTPUT:
-        RETVAL
-
-PCAP::Program
-compile(PCAP::Handle self, unsigned char *program, int optimize)
-    CODE:
-        RETVAL = malloc(sizeof *RETVAL);
-        if (pcap_compile(self, RETVAL, program, optimize, PCAP_NETMASK_UNKNOWN) == -1) {
-            Perl_croak("%s", pcap_geterr(self));
-        }
-    OUTPUT:
-        RETVAL
-
-void
-set_filter(PCAP::Handle self, PCAP::Program program)
-    CODE:
-        if (pcap_setfilter(self, program) == -1) {
-            Perl_croak("%s", pcap_geterr(self));
-        }
-
-void
-set_direction(PCAP::Handle self, unsigned char *direction)
-    CODE:
-        if (0 != strcmp(direction, "out")) {
-            Perl_croak("Direction not supported");
-        }
-        pcap_setdirection(self, PCAP_D_OUT);
-
-void
-loop(PCAP::Handle self, SV *coderef)
-    CODE:
-        if (!SvROK(coderef) ||
-            SvTYPE(SvRV(coderef)) != SVt_PVCV)
-        {
-            Perl_croak(aTHX_ "loop() requires a CODE reference");
-        }
-        PCAPContext *ctx = malloc(sizeof(*ctx));
-        ctx->callback = coderef;
-        ctx->datalink = pcap_datalink(self);
-
-        pcap_loop(self, -1, gtk_win_pcap_handler, (u_char *)ctx);
-        free(ctx);
-
-void
-DESTROY(PCAP::Handle self)
-    CODE:
-        pcap_close(self);
-
-MODULE = GTKWin PACKAGE = PCAP::If
-
-PCAP::If
-find_all_devs(...)
-    CODE:
-        char errbuf[PCAP_ERRBUF_SIZE];
-        if (pcap_findalldevs(&RETVAL, errbuf) == -1) {
-            Perl_croak("%s", errbuf);
-        }
-    OUTPUT:
-        RETVAL
-
-PCAP::Handle
-open_live(PCAP::If self, char *listen_addr, int snaplen, int promisc, int to_ms)
-    CODE:
-        char errbuf[PCAP_ERRBUF_SIZE];
-        pcap_if_t *dev = NULL;
-        for (dev = self; dev; dev = dev->next) {
-            pcap_addr_t *addr;
-            if (dev->flags & PCAP_IF_LOOPBACK)
-                continue;
-            for (addr = dev->addresses; addr; addr = addr->next) {
-                struct sockaddr_in *sin;
-                if (addr->addr == NULL)
-                    continue;
-                if (addr->addr->sa_family != AF_INET)
-                    continue;
-                sin = (struct sockaddr_in *)addr->addr;
-                if (strcmp(inet_ntoa(sin->sin_addr), listen_addr) == 0)
-                    goto found;
-            }
-        }
-        dev = NULL;
-        found:
-        if (dev == NULL) {
-            Perl_croak("Interface not found");
-        }
-        RETVAL = pcap_open_live(dev->name, snaplen, promisc, to_ms, errbuf);
-        if (RETVAL == NULL) {
-            Perl_croak("%s", errbuf);
-        }
-    OUTPUT:
-        RETVAL
-
-void
-DESTROY(PCAP::If self)
-    CODE:
-        pcap_freealldevs(self);
-
-MODULE = GTKWin PACKAGE = Gtk::Editable
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Editable
 
 const char *
 get_text(Gtk::Editable self)
@@ -799,7 +429,7 @@ get_text(Gtk::Editable self)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::Entry
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Entry
 
 Gtk::Entry
 new(...)
@@ -809,7 +439,7 @@ new(...)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::CheckButton
+MODULE = AlgaOS::Installer PACKAGE = Gtk::CheckButton
 
 Gtk::CheckButton
 new(...)
@@ -826,7 +456,7 @@ get_active(Gtk::CheckButton self)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::Button
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Button
 
 void
 set_label(Gtk::Button button, char *label)
@@ -841,7 +471,7 @@ new(SV *class, char *label)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::Window
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Window
 
 void
 set_title(Gtk::Window self, char *title)
@@ -876,7 +506,7 @@ present(Gtk::Window win)
     CODE:
         gtk_window_present(win);
 
-MODULE = GTKWin PACKAGE = Gtk::Box
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Box
 
 Gtk::Box
 new(SV *class, unsigned int orientation, int spacing)
@@ -886,7 +516,7 @@ new(SV *class, unsigned int orientation, int spacing)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::Widget
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Widget
 
 void
 add_css_class(Gtk::Widget widget, char *class)
@@ -911,7 +541,7 @@ set_halign(Gtk::Widget widget, unsigned int constant)
     CODE:
         gtk_widget_set_halign(widget, constant);
 
-MODULE = GTKWin PACKAGE = Gtk::Application
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Application
 
 Gtk::Application
 new(SV *class, char *app_name, size_t flags)
@@ -921,7 +551,7 @@ new(SV *class, char *app_name, size_t flags)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gio::Application
+MODULE = AlgaOS::Installer PACKAGE = Gio::Application
 
 void
 timeout_add(SV *class, unsigned int interval, SV *callback)
@@ -957,17 +587,17 @@ run(Gio::Application app, ...)
 
         free(argv);
 
-MODULE = GTKWin PACKAGE = Gio::File
+MODULE = AlgaOS::Installer PACKAGE = Gio::File
 
 Gio::File
-new(SV *class, unsigned char *path)
+new(SV *class, const char *path)
     CODE:
         RETVAL = g_file_new_for_path(path);
         g_object_ref_sink(RETVAL);
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::Picture
+MODULE = AlgaOS::Installer PACKAGE = Gtk::Picture
 
 Gtk::Picture
 new(SV *class, Gdk::Texture texture)
@@ -977,7 +607,7 @@ new(SV *class, Gdk::Texture texture)
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = Gtk::CssProvider
+MODULE = AlgaOS::Installer PACKAGE = Gtk::CssProvider
 
 Gtk::CssProvider
 new(...)
@@ -992,14 +622,14 @@ load_from_path(Gtk::CssProvider self, char *path)
     CODE:
         gtk_css_provider_load_from_path(self, path);
 
-MODULE = GTKWin PACKAGE = Gdk::Display
+MODULE = AlgaOS::Installer PACKAGE = Gdk::Display
 
 void
 add_css_provider(Gdk::Display self, Gtk::CssProvider provider, int priority)
     CODE:
         gtk_style_context_add_provider_for_display(self, GTK_STYLE_PROVIDER (provider), priority);
 
-MODULE = GTKWin PACKAGE = Gdk::Texture
+MODULE = AlgaOS::Installer PACKAGE = Gdk::Texture
 
 Gdk::Texture
 new(SV *class, Gio::File file)
@@ -1008,12 +638,12 @@ new(SV *class, Gio::File file)
         RETVAL = gdk_texture_new_from_file(file, &error);
         g_object_ref_sink(RETVAL);
         if (error != NULL) {
-            Perl_croak(error->message);
+            Perl_croak("%s", error->message);
         }
     OUTPUT:
         RETVAL
 
-MODULE = GTKWin PACKAGE = G::Object
+MODULE = AlgaOS::Installer PACKAGE = G::Object
 
 void
 bind_property_full(G::Object self, char *self_property, G::Object target, char *target_property, int flags, SV *transform_to, SV *transform_from)

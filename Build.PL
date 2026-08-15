@@ -98,9 +98,9 @@ generate_parentships();
 generate_constants_xsi();
 
 sub generate_constants_xsi {
-    open my $fh, '>', 'Constants.xsi'
+    open my $fh, '>', 'lib/AlgaOS/Constants.xsi'
         or die "Cannot create Constants.xsi: $!";
-    say $fh "MODULE = Gtk::Win::Constants PACKAGE = Gtk::Win::Constants";
+    say $fh "MODULE = AlgaOS::Installer PACKAGE = AlgaOS::Installer::Constants";
 
     say $fh "";
 
@@ -118,7 +118,7 @@ XS
     }
 
     say $fh <<"XS";
-Gtk::Win::Constants
+AlgaOS::Installer::Constants
 new(...)
     CODE:
         RETVAL = malloc(sizeof *RETVAL);
@@ -127,14 +127,14 @@ new(...)
         RETVAL
 
 void
-DESTROY(Gtk::Win::Constants self)
+DESTROY(AlgaOS::Installer::Constants self)
     CODE:
         free(self);
 XS
 }
 
 sub generate_parentships {
-    open my $fh, '>', 'lib/GTK/Win/Parents.pm'
+    open my $fh, '>', 'lib/AlgaOS/Installer/Parents.pm'
         or die "Cannot create parentships: $!";
     for my $child (keys %parentships) {
         say $fh "package $child;";
@@ -145,15 +145,14 @@ sub generate_parentships {
 }
 
 my $build = Module::Build->new(
-    module_name => 'GTK::Win',
+    module_name => 'AlgaOS::Installer',
     license     => 'perl',
     requires    => {
         'perl'               => '5.38.2',
         'ExtUtils::CBuilder' => 0,
     },
-    xs_files           => { './GTKWin.xs' => './GTKWin.xs', },
-    extra_compiler_flags => scalar `pkg-config --cflags gtk4` . " -I$ENV{PWD} " . `pkg-config --cflags libpcap`,
-    extra_linker_flags => scalar `pkg-config --libs gtk4` . ' ' . `pkg-config --libs libpcap`,
+    extra_compiler_flags => scalar `pkg-config --cflags gtk4` . " -I$ENV{PWD}",
+    extra_linker_flags => scalar `pkg-config --libs gtk4`,
 );
 
 $build->create_build_script;
