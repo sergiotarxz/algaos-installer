@@ -388,17 +388,21 @@ menuentry "AlgaOS" {
 };
 EOF
     }
+    excfailexit qw{emerge --sync};
     for my $kver ( glob("/boot/recovery/kernel-*") ) {
         die "No kernel found in /boot/recovery\n" unless $kver;
 
         $kver =~ s{.*/kernel-}{};
+        excfailexit qw{dracut --force --kver}, $kver, qw{--no-hostonly --stdlog 6 --force --add dmsquash-live}, "/boot/recovery/initramfs-${kver}.img";
+
         say $fh <<"EOF";
-menuentry "AlgaOS" {
+menuentry "AlgaOS Recovery" {
     linux /boot/recovery/kernel-$kver root=live:PARTUUID=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug
     initrd /boot/recovery/initramfs-$kver.img
 };
 EOF
     }
+    excfailexit qw{rm -frv /var/db/repos/algaos/};
     $ENV{HOME}          = '/home/test';
     $ENV{USER}          = 'test';
     $ENV{LOGNAME}       = 'test';
