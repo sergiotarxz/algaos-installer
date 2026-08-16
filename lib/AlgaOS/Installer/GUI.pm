@@ -250,23 +250,23 @@ sub _install {
             system 'sudo umount -R /mnt/gentoo';
         };
 
-   #        excfailexit qw{sudo sgdisk -Z}, $block;
-   #        excfailexit qw{sudo sgdisk -n 1::+1G}, $block;
-   #        excfailexit qw{sudo sgdisk -t 1:ef00}, $block;
-   #        excfailexit qw{sudo sgdisk -c}, "1:AlgaOSEFI", $block;
-   #        excfailexit qw{sudo sgdisk -n 2::+1G}, $block;
-   #        excfailexit qw{sudo sgdisk -t 2:ef02}, $block;
-   #        excfailexit qw{sudo sgdisk -c}, "2:AlgaOSBIOSBoot", $block;
-   #        excfailexit qw{sudo sgdisk -n 3::+20G}, $block;
-   #        excfailexit qw{sudo sgdisk -c}, "3:AlgaOSRecovery", $block;
-   #        excfailexit qw{sudo sgdisk -N 4}, $block;
-   #        excfailexit qw{sudo sgdisk -c}, "4:AlgaOSRoot", $block;
-   #        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}1";
-   #        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}3";
-   #        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}4";
-   #        excfailexit qw{sudo mkfs.vfat}, "${block}1";
-   #        excfailexit qw{sudo mkfs.ext4}, "${block}3";
-   #        excfailexit qw{sudo mkfs.ext4}, "${block}4";
+        excfailexit qw{sudo sgdisk -Z},         $block;
+        excfailexit qw{sudo sgdisk -n 1::+1G},  $block;
+        excfailexit qw{sudo sgdisk -t 1:ef00},  $block;
+        excfailexit qw{sudo sgdisk -c},         "1:AlgaOSEFI", $block;
+        excfailexit qw{sudo sgdisk -n 2::+1G},  $block;
+        excfailexit qw{sudo sgdisk -t 2:ef02},  $block;
+        excfailexit qw{sudo sgdisk -c},         "2:AlgaOSBIOSBoot", $block;
+        excfailexit qw{sudo sgdisk -n 3::+20G}, $block;
+        excfailexit qw{sudo sgdisk -c},         "3:AlgaOSRecovery", $block;
+        excfailexit qw{sudo sgdisk -N 4},       $block;
+        excfailexit qw{sudo sgdisk -c},         "4:AlgaOSRoot", $block;
+        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}1";
+        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}3";
+        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}4";
+        excfailexit qw{sudo mkfs.vfat},                      "${block}1";
+        excfailexit qw{sudo mkfs.ext4},                      "${block}3";
+        excfailexit qw{sudo mkfs.ext4},                      "${block}4";
         excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
         excfailexit qw{sudo mount},     "${block}4", '/mnt/gentoo';
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
@@ -275,10 +275,12 @@ sub _install {
         excfailexit qw{sudo mount},  "${block}1",        '/mnt/gentoo/boot/efi';
         excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
         system 'sudo mkdir /recovery';
-        if (system qw{sudo mount LABEL=ALGAOS}, '/recovery') {
-            system qw{sudo mount PARTLABEL=AlgaOSRecovery}, '/recovery';
+
+        if ( system qw{sudo mount LABEL=ALGAOS}, '/recovery' ) {
+            system qw{sudo mount PARTUUID=AlgaOSRecovery}, '/recovery';
         }
-        excfailexit qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
+        excfailexit
+          qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
         excfailexit
           qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
           $self->_hostname_entry->get_text, $self->_username_entry->get_text,
@@ -287,7 +289,8 @@ sub _install {
           $self->_dropdown_locale->selected_text,
           $block;
 
-#        excfailexit 'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
+        excfailexit
+'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
         system 'sudo umount -R /mnt/gentoo';
         say "Finish $$";
         exit 0;
@@ -355,6 +358,7 @@ EOF
     open $fh, '|-', qw{passwd --stdin}, $username;
     say $fh $password;
     close $fh;
+
     if ( $? != 0 ) {
         excfailexit "forcing-a-fail-because-passwd-failed-and-iam-lazy";
     }
@@ -379,7 +383,7 @@ EOF
         $kver =~ s{.*/kernel-}{};
         say $fh <<"EOF";
 menuentry "AlgaOS" {
-    linux /boot/kernel-$kver root=PARTLABEL=$devices{AlgaOSRoot}
+    linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot}
     initrd /boot/initramfs-$kver.img
 };
 EOF
@@ -390,19 +394,23 @@ EOF
         $kver =~ s{.*/kernel-}{};
         say $fh <<"EOF";
 menuentry "AlgaOS" {
-    linux /boot/recovery/kernel-$kver root=live:PARTLABEL=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug
+    linux /boot/recovery/kernel-$kver root=live:PARTUUID=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug
     initrd /boot/recovery/initramfs-$kver.img
 };
 EOF
     }
-    $ENV{HOME} = '/home/test';
-    $ENV{USER} = 'test';
-    $ENV{LOGNAME} = 'test';
+    $ENV{HOME}          = '/home/test';
+    $ENV{USER}          = 'test';
+    $ENV{LOGNAME}       = 'test';
     $ENV{XDG_DATA_HOME} = '/home/test/.local/share';
-    $ENV{XDG_DATA_DIRS} = '/home/test/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share';
-    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c}, "flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
-    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c}, "flatpak --user install --noninteractive com.valvesoftware.Steam";
-    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c}, "flatpak --user install --noninteractive com.usebottles.bottles";
+    $ENV{XDG_DATA_DIRS} =
+'/home/test/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share';
+    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
+"flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
+    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
+      "flatpak --user install --noninteractive com.valvesoftware.Steam";
+    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
+      "flatpak --user install --noninteractive com.usebottles.bottles";
     excfailexit qw{grub-install --target=i386-pc --recheck}, $block_devices;
     excfailexit qw{grub-install
       --target=x86_64-efi
