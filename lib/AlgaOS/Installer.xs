@@ -15,6 +15,54 @@ typedef struct {
     SV *to;
 } BindingUserdata;
 
+static void
+gtk_alert_dialog_choose_callback(
+    GObject      *source_object,
+    GAsyncResult *result,
+    gpointer      user_data
+)
+{
+    dSP;
+
+    SV *callback = (SV *)user_data;
+    GError *error = NULL;
+
+    int response = gtk_alert_dialog_choose_finish(
+        GTK_ALERT_DIALOG(source_object),
+        result,
+        &error
+    );
+
+    if (error != NULL) {
+		Perl_croak("%s", error->message);
+	}
+
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+
+	XPUSHs(sv_2mortal(newSViv(response)));
+
+    PUTBACK;
+
+    call_sv(callback, G_DISCARD | G_EVAL);
+
+    SPAGAIN;
+
+    if (SvTRUE(ERRSV)) {
+        Perl_warn("Perl binding callback failed: %s",
+             SvPV_nolen(ERRSV));
+
+        sv_setsv(ERRSV, &PL_sv_undef);
+    }
+
+    FREETMPS;
+    LEAVE;
+
+    SvREFCNT_dec(callback);
+}
+
 static gboolean
 perl_timeout_func(gpointer userdata) {
     SV *callback = (SV *)userdata;
@@ -359,9 +407,26 @@ new(SV *class, char *title, char *detail)
         RETVAL
 
 void
+make_yes_no(Gtk::AlertDialog self)
+    CODE:
+        const char *buttons[] = {
+            "Cancel",
+            "Ok",
+            NULL
+        };
+        gtk_alert_dialog_set_buttons(self, buttons);
+        gtk_alert_dialog_set_default_button(self, 1);
+
+void
 show(Gtk::AlertDialog self, Gtk::Window parent)
     CODE:
         gtk_alert_dialog_show(self, parent);
+
+void
+choose(Gtk::AlertDialog self, Gtk::Window window, SV *callback)
+    CODE:
+        SvREFCNT_inc(callback);
+        gtk_alert_dialog_choose(self, window, NULL, gtk_alert_dialog_choose_callback, callback);
 
 MODULE = AlgaOS::Installer PACKAGE = Gtk::Overlay
 
@@ -527,7 +592,7 @@ selected_text(Gtk::Dropdown self)
     OUTPUT:
         RETVAL
 
-guint
+unsigned int
 selected(Gtk::Dropdown self)
 	CODE:
 		RETVAL = gtk_drop_down_get_selected(self);
