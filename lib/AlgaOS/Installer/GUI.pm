@@ -274,6 +274,11 @@ sub _install {
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
         excfailexit qw{sudo mount},  "${block}1",        '/mnt/gentoo/boot/efi';
         excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
+        system 'sudo mkdir /recovery';
+        if (system qw{sudo mount LABEL=ALGAOS}, '/recovery') {
+            system qw{sudo mount PARTLABEL=AlgaOSRecovery}, '/recovery';
+        }
+        excfailexit qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
         excfailexit
           qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
           $self->_hostname_entry->get_text, $self->_username_entry->get_text,
