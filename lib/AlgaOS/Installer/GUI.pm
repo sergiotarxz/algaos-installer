@@ -273,12 +273,14 @@ sub _install {
         excfailexit qw{sudo mount},     "${block}3", '/mnt/gentoo/recovery';
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
         excfailexit qw{sudo mount},  "${block}1",        '/mnt/gentoo/boot/efi';
-        excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
         system 'sudo mkdir /recovery';
 
         if ( system qw{sudo mount LABEL=ALGAOS}, '/recovery' ) {
             system qw{sudo mount PARTUUID=AlgaOSRecovery}, '/recovery';
         }
+        excfailexit
+'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
+        excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
         excfailexit
           qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
         excfailexit
@@ -289,8 +291,6 @@ sub _install {
           $self->_dropdown_locale->selected_text,
           $block;
 
-        excfailexit
-'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
         system 'sudo umount -R /mnt/gentoo';
         say "Finish $$";
         exit 0;
