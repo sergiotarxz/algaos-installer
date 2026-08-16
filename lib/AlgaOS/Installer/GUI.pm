@@ -10,9 +10,8 @@ use AlgaOS::Installer::Util;
 use List::Util;
 use JSON;
 use POSIX qw/WNOHANG/;
-use Crypt::PBKDF2;
-
-
+use PBKDF2::Tiny;
+use Crypt::URandom qw/urandom/;
 
 BEGIN {
     *CORE::GLOBAL::exit = sub {
@@ -275,7 +274,7 @@ sub _install {
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
         excfailexit qw{sudo mount},     "${block}3", '/mnt/gentoo/recovery';
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
-        excfailexit qw{sudo mount},  "${block}1",        '/mnt/gentoo/boot/efi';
+        excfailexit qw{sudo mount},     "${block}1", '/mnt/gentoo/boot/efi';
         system 'sudo mkdir /recovery';
 
         if ( system qw{sudo mount LABEL=ALGAOS}, '/recovery' ) {
@@ -374,20 +373,19 @@ EOF
       "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
     my $grub_dir = "/boot/grub";
     system qw{mkdir -pv}, $grub_dir;
-    open $fh, '>', "$grub_dir/grub.cfg";
-    my $pbkdf2 = Crypt::PBKDF2->new(
-        hash_class => 'HMACSHA2',
-        hash_args  => { sha_size => 512 },
-        iterations => 10000,
-        output_len => 64,
-    );
+    my $salt     = urandom(64);
+    my $salt_hex = unpack( 'H*', $salt );
+    my $iterations = 1000;
 
-    my $hash = $pbkdf2->generate($password);
+    my $hash =
+      PBKDF2::Tiny::derive_hex( 'SHA-512', $password, $salt, $iterations, 64 );
+
+    open $fh, '>', "$grub_dir/grub.cfg";
     say $fh <<"EOF";
 set timeout=5
 set default=0
 set superusers="admin"
-password_pbkdf2 admin grub.pbkdf2.$hash
+password_pbkdf2 admin grub.pbkdf2.sha512.$iterations.$salt_hex.$hash
 EOF
 
     for my $kver ( glob("/boot/kernel-*") ) {
@@ -395,7 +393,7 @@ EOF
 
         $kver =~ s{.*/kernel-}{};
         say $fh <<"EOF";
-menuentry "AlgaOS" {
+menuentry "AlgaOS" --unrestricted {
     linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot}
     initrd /boot/initramfs-$kver.img
 };
@@ -406,7 +404,9 @@ EOF
         die "No kernel found in /boot/recovery\n" unless $kver;
 
         $kver =~ s{.*/kernel-}{};
-        excfailexit qw{dracut --force --kver}, $kver, qw{--no-hostonly --stdlog 6 --force --add dmsquash-live}, "/boot/recovery/initramfs-${kver}.img";
+        excfailexit qw{dracut --force --kver}, $kver,
+          qw{--no-hostonly --stdlog 6 --force --add dmsquash-live},
+          "/boot/recovery/initramfs-${kver}.img";
 
         say $fh <<"EOF";
 menuentry "AlgaOS Recovery" --users admin {
