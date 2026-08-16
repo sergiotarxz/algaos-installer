@@ -13,7 +13,7 @@ use POSIX qw/WNOHANG/;
 
 BEGIN {
     *CORE::GLOBAL::exit = sub {
-        POSIX::_exit($_[0] // 0);
+        POSIX::_exit( $_[0] // 0 );
     };
 }
 
@@ -47,7 +47,7 @@ sub _build_app {
     return Gtk::Application->new( "me.sergiotarxz.hola", 0 );
 }
 
-sub _create_install_grid($self, $desc) {
+sub _create_install_grid( $self, $desc ) {
     my $grid  = Gtk::Grid->new;
     my $const = $self->const;
     $grid->add_css_class('transparent_background');
@@ -209,121 +209,200 @@ sub _create_main_grid($self) {
 }
 
 sub excfailexit {
-    my @command = @_;
-    my $command_string = join ', ', map { "'$_'"} @command;
+    my @command        = @_;
+    my $command_string = join ', ', map { "'$_'" } @command;
     say "system $command_string";
     my $return_code = system @command;
     if ($return_code) {
         system 'sudo umount -R /mnt/gentoo';
         say "system $command_string: failed";
-        exit $return_code;
+        exit 1;
     }
 }
 
 sub _failed_install {
     my $self = shift;
     say 'Failure';
-    $self->_scroll->set_child( $self->_create_install_grid('The installation failed') );
+    $self->_scroll->set_child(
+        $self->_create_install_grid('The installation failed') );
 }
 
 sub _succesful_install {
     my $self = shift;
     say 'Success';
-    $self->_scroll->set_child( $self->_create_install_grid('The installation went well reboot and unplug the booting media use it') );
+    $self->_scroll->set_child(
+        $self->_create_install_grid(
+'The installation went well reboot and unplug the booting media use it'
+        )
+    );
 }
 
 sub _install {
     my $self = shift;
-    $self->_scroll->set_child( $self->_create_install_grid('The system is now being installed') );
+    $self->_scroll->set_child(
+        $self->_create_install_grid('The system is now being installed') );
     my ($block_name) = split /\t+/,
       $self->_dropdown_block_devices->selected_text;
     my $block = "/dev/$block_name";
-    my $pid = fork;
-    if (!$pid) {
+    my $pid   = fork;
+    if ( !$pid ) {
         local $SIG{INT} = sub {
             system 'sudo umount -R /mnt/gentoo';
         };
-#        excfailexit qw{sudo sgdisk -Z}, $block;
-#        excfailexit qw{sudo sgdisk -n 1::+1G}, $block;
-#        excfailexit qw{sudo sgdisk -t 1:ef00}, $block;
-#        excfailexit qw{sudo sgdisk -c}, "1:AlgaOSEFI", $block;
-#        excfailexit qw{sudo sgdisk -n 2::+1G}, $block;
-#        excfailexit qw{sudo sgdisk -t 2:ef02}, $block;
-#        excfailexit qw{sudo sgdisk -c}, "2:AlgaOSBIOSBoot", $block;
-#        excfailexit qw{sudo sgdisk -n 3::+20G}, $block;
-#        excfailexit qw{sudo sgdisk -c}, "3:AlgaOSRecovery", $block;
-#        excfailexit qw{sudo sgdisk -N 4}, $block;
-#        excfailexit qw{sudo sgdisk -c}, "4:AlgaOSRoot", $block;
-#        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}1";
-#        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}3";
-#        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}4";
-#        excfailexit qw{sudo mkfs.vfat}, "${block}1";
-#        excfailexit qw{sudo mkfs.ext4}, "${block}3";
-#        excfailexit qw{sudo mkfs.ext4}, "${block}4";
+
+   #        excfailexit qw{sudo sgdisk -Z}, $block;
+   #        excfailexit qw{sudo sgdisk -n 1::+1G}, $block;
+   #        excfailexit qw{sudo sgdisk -t 1:ef00}, $block;
+   #        excfailexit qw{sudo sgdisk -c}, "1:AlgaOSEFI", $block;
+   #        excfailexit qw{sudo sgdisk -n 2::+1G}, $block;
+   #        excfailexit qw{sudo sgdisk -t 2:ef02}, $block;
+   #        excfailexit qw{sudo sgdisk -c}, "2:AlgaOSBIOSBoot", $block;
+   #        excfailexit qw{sudo sgdisk -n 3::+20G}, $block;
+   #        excfailexit qw{sudo sgdisk -c}, "3:AlgaOSRecovery", $block;
+   #        excfailexit qw{sudo sgdisk -N 4}, $block;
+   #        excfailexit qw{sudo sgdisk -c}, "4:AlgaOSRoot", $block;
+   #        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}1";
+   #        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}3";
+   #        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}4";
+   #        excfailexit qw{sudo mkfs.vfat}, "${block}1";
+   #        excfailexit qw{sudo mkfs.ext4}, "${block}3";
+   #        excfailexit qw{sudo mkfs.ext4}, "${block}4";
         excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
-        excfailexit qw{sudo mount}, "${block}4", '/mnt/gentoo';
+        excfailexit qw{sudo mount},     "${block}4", '/mnt/gentoo';
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
-        excfailexit qw{sudo mount}, "${block}3", '/mnt/gentoo/recovery';
+        excfailexit qw{sudo mount},     "${block}3", '/mnt/gentoo/recovery';
         excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
-        excfailexit qw{sudo mount}, "${block}1", '/mnt/gentoo/boot/efi';
+        excfailexit qw{sudo mount},  "${block}1",        '/mnt/gentoo/boot/efi';
+        excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
         excfailexit
-          qw{sudo perl -Mblib -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
+          qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
           $self->_hostname_entry->get_text, $self->_username_entry->get_text,
           $self->_password_entry->get_text,
           $self->_dropdown_timezones->selected_text,
           $self->_dropdown_locale->selected_text,
-          $self->_dropdown_block_devices->selected_text;
+          $block;
+
 #        excfailexit 'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
         system 'sudo umount -R /mnt/gentoo';
         say "Finish $$";
         exit 0;
     }
-    $self->app->timeout_add(1000, sub {
-        my $waitpid_result = waitpid($pid, WNOHANG);
-        say $pid;
-        say $waitpid_result;
-        if ($waitpid_result == -1) {
-            $self->_failed_install;
-            return 0;
-        }
-        if ($waitpid_result == 0) {
-            return 1;
-        }
-        if ($waitpid_result == $pid) {
-            if ($? != 0) {
+    $self->app->timeout_add(
+        1000,
+        sub {
+            my $waitpid_result = waitpid( $pid, WNOHANG );
+            if ( $waitpid_result == -1 ) {
                 $self->_failed_install;
                 return 0;
             }
-            $self->_succesful_install;
+            if ( $waitpid_result == 0 ) {
+                return 1;
+            }
+            if ( $waitpid_result == $pid ) {
+                if ( $? != 0 ) {
+                    $self->_failed_install;
+                    return 0;
+                }
+                $self->_succesful_install;
+                return 0;
+            }
             return 0;
         }
-        return 0;
-    });
+    );
 }
 
 sub chroot_install_commands {
-    my ($hostname, $username, $password, $timezone, $locale, $block_devices) = @ARGV;
+    my ( $hostname, $username, $password, $timezone, $locale, $block_devices )
+      = @ARGV;
+    system qw{mount -t proc proc /mnt/gentoo/proc};
+    system qw{mount -t sysfs sysfs /mnt/gentoo/sys};
+    system qw{mount --rbind /dev/ /mnt/gentoo/dev};
+    system qw{mount --make-rslave /mnt/gentoo/proc};
+    system qw{mount --make-rslave /mnt/gentoo/sys};
+    system qw{mount --make-rslave /mnt/gentoo/dev};
+    my $devices = `lsblk -o PARTLABEL,PARTUUID $block_devices`;
     chroot '/mnt/gentoo';
     chdir '/';
+    open my $fh, '>', '/etc/hostname';
+    say $fh "$hostname";
+    close $fh;
+    my @devices = split /\n/, $devices;
+    shift @devices;
+    @devices = grep { !/^\s*$/ } @devices;
+    my %devices = map { ( split /\s+/, $_ ) } @devices;
+    open $fh, '>', '/etc/fstab';
+    say $fh <<"EOF";
+PARTUUID=$devices{AlgaOSEFI}		/boot/efi		vfat		defaults        1 2
+PARTUUID=$devices{AlgaOSRoot}		/		        ext4		defaults		0 1
+PARTUUID=$devices{AlgaOSRecovery}   /recovery 		ext4		defaults		0 1
+EOF
+    close $fh;
     excfailexit qw{systemd-machine-id-setup};
     excfailexit qw{systemctl preset-all};
     excfailexit qw{systemctl enable gdm};
     excfailexit qw{systemctl enable NetworkManager};
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
-    excfailexit qw{useradd -m}, $username, qw{-s /bin/bash};
-    open my $fh, '|-', qw{passwd --stdin}, $username;
+    excfailexit qw{systemctl enable chronyd};
+    excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
+      '/etc/localtime';
+    system qw{useradd -m}, $username, qw{-s /bin/bash};
+    open $fh, '|-', qw{passwd --stdin}, $username;
     say $fh $password;
     close $fh;
-    if ($? != 0) {
+    if ( $? != 0 ) {
         excfailexit "forcing-a-fail-because-passwd-failed-and-iam-lazy";
     }
     my $sudoers_dir = '/etc/sudoers.d';
     excfailexit qw{mkdir -pv}, $sudoers_dir;
-    open $fh, '>', qw{mkdir -pv}, "$sudoers_dir/algaos";
+    open $fh, '>', "$sudoers_dir/algaos";
     say $fh "user ALL=(ALL) NOPASSWD: ALL";
     close $fh;
-    excfailexit "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
+    excfailexit
+      "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
+    my $grub_dir = "/boot/grub";
+    system qw{mkdir -pv}, $grub_dir;
+    open $fh, '>', "$grub_dir/grub.cfg";
+    say $fh <<"EOF";
+set timeout=5
+set default=0
+EOF
+
+    for my $kver ( glob("/boot/kernel-*") ) {
+        die "No kernel found in /boot\n" unless $kver;
+
+        $kver =~ s{.*/kernel-}{};
+        say $fh <<"EOF";
+menuentry "AlgaOS" {
+    linux /boot/kernel-$kver root=PARTLABEL=$devices{AlgaOSRoot}
+    initrd /boot/initramfs-$kver.img
+};
+EOF
+    }
+    for my $kver ( glob("/boot/recovery/kernel-*") ) {
+        die "No kernel found in /boot/recovery\n" unless $kver;
+
+        $kver =~ s{.*/kernel-}{};
+        say $fh <<"EOF";
+menuentry "AlgaOS" {
+    linux /boot/recovery/kernel-$kver root=live:PARTLABEL=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug
+    initrd /boot/recovery/initramfs-$kver.img
+};
+EOF
+    }
+    $ENV{HOME} = '/home/test';
+    $ENV{USER} = 'test';
+    $ENV{LOGNAME} = 'test';
+    $ENV{XDG_DATA_HOME} = '/home/test/.local/share';
+    $ENV{XDG_DATA_DIRS} = '/home/test/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share';
+    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c}, "flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
+    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c}, "flatpak --user install --noninteractive com.valvesoftware.Steam";
+    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c}, "flatpak --user install --noninteractive com.usebottles.bottles";
+    excfailexit qw{grub-install --target=i386-pc --recheck}, $block_devices;
+    excfailexit qw{grub-install
+      --target=x86_64-efi
+      --efi-directory=/boot/efi
+      --removable};
     exit 0;
 }
 
