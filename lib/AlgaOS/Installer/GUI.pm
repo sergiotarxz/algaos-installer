@@ -10,6 +10,9 @@ use AlgaOS::Installer::Util;
 use List::Util;
 use JSON;
 use POSIX qw/WNOHANG/;
+use Crypt::PBKDF2;
+
+
 
 BEGIN {
     *CORE::GLOBAL::exit = sub {
@@ -372,9 +375,19 @@ EOF
     my $grub_dir = "/boot/grub";
     system qw{mkdir -pv}, $grub_dir;
     open $fh, '>', "$grub_dir/grub.cfg";
+    my $pbkdf2 = Crypt::PBKDF2->new(
+        hash_class => 'HMACSHA2',
+        hash_args  => { sha_size => 512 },
+        iterations => 10000,
+        output_len => 64,
+    );
+
+    my $hash = $pbkdf2->generate($password);
     say $fh <<"EOF";
 set timeout=5
 set default=0
+set superusers="admin"
+password_pbkdf2 admin grub.pbkdf2.$hash
 EOF
 
     for my $kver ( glob("/boot/kernel-*") ) {
@@ -396,7 +409,7 @@ EOF
         excfailexit qw{dracut --force --kver}, $kver, qw{--no-hostonly --stdlog 6 --force --add dmsquash-live}, "/boot/recovery/initramfs-${kver}.img";
 
         say $fh <<"EOF";
-menuentry "AlgaOS Recovery" {
+menuentry "AlgaOS Recovery" --users admin {
     linux /boot/recovery/kernel-$kver root=live:PARTUUID=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug
     initrd /boot/recovery/initramfs-$kver.img
 };
