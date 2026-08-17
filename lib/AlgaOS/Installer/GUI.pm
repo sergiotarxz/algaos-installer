@@ -72,7 +72,7 @@ sub _create_install_grid( $self, $desc ) {
     return $grid;
 }
 
-sub _create_main_grid($self) {
+sub _create_real_install_grid($self) {
     my $const = $self->const;
     my $grid  = Gtk::Grid->new;
     $grid->add_css_class('transparent_background');
@@ -165,29 +165,14 @@ sub _create_main_grid($self) {
             $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
         }
     );
+    my $confirm_button = Gtk::Button->new("Install in this disk and lose all data");
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( Gtk::Label->new('Set the installation destination'),
-                0, $self->_grid_row, 1, 1 );
-            my $block_devices =
-              JSON::from_json(`lsblk --json -d -o NAME,SIZE,MODEL,TYPE,TRAN`);
-            my @block_devices =
-              map { join "\t", @$_{qw/name model size type tran/}; }
-              $block_devices->{blockdevices}->@*;
-            @block_devices = grep { defined $_ } @block_devices;
-            my $dropdown = Gtk::Dropdown->new( [@block_devices] );
-            $self->_dropdown_block_devices($dropdown);
-            $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
-        }
-    );
-
-    $self->call_and_increment_grid_row(
-        sub {
-            $grid->attach( $self->_start_installation_button,
+            $grid->attach( $confirm_button,
                 1, $self->_grid_row, 1, 1 );
         }
     );
-    $self->_start_installation_button->connect(
+    $confirm_button->connect(
         clicked => sub {
             my $dialog = Gtk::AlertDialog->new(
                 "Your data in that storage media will be lost",
@@ -208,6 +193,66 @@ sub _create_main_grid($self) {
     $grid->set_valign( $const->GTK_ALIGN_CENTER );
     $grid->set_halign( $const->GTK_ALIGN_CENTER );
     return $grid;
+}
+
+sub _create_main_grid($self) {
+    my $const = $self->const;
+    my $grid  = Gtk::Grid->new;
+    $grid->add_css_class('transparent_background');
+    $self->call_and_increment_grid_row(
+        sub {
+            my $label = Gtk::Label->new('Install AlgaOS');
+            $label->add_css_class('title-1');
+            $grid->attach( $label, 0, $self->_grid_row, 3, 1 );
+        }
+    );
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( Gtk::Label->new('Set the installation destination'),
+                0, $self->_grid_row, 1, 1 );
+            my $block_devices =
+              JSON::from_json(`lsblk --json -d -o NAME,SIZE,MODEL,TYPE,TRAN`);
+            my @block_devices =
+              map {
+                join "\t", map { $_ // '' } @$_{qw/name model size type tran/};
+              } $block_devices->{blockdevices}->@*;
+            @block_devices = grep { defined $_ } @block_devices;
+            my $dropdown = Gtk::Dropdown->new( [@block_devices] );
+            $self->_dropdown_block_devices($dropdown);
+            $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
+        }
+    );
+
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( $self->_start_installation_button,
+                1, $self->_grid_row, 1, 1 );
+        }
+    );
+    $self->_start_installation_button->connect(
+        clicked => sub {
+            $self->_on_click_select_media;
+        }
+    );
+
+    $grid->set_valign( $const->GTK_ALIGN_CENTER );
+    $grid->set_halign( $const->GTK_ALIGN_CENTER );
+    return $grid;
+}
+
+sub _on_click_select_media($self) {
+    my ($block_name) = split /\t+/,
+      $self->_dropdown_block_devices->selected_text;
+    my $block      = "/dev/$block_name";
+    my $root_count = my ( $root_label, $root_uuid ) = split /\s+/,
+      `lsblk -o PARTLABEL,PARTUUID $block | grep AlgaOSRoot`;
+    my $recovery_count = my ( $recovery_label, $recovery_uuid ) = split /\s+/,
+      `lsblk -o PARTLABEL,PARTUUID $block | grep AlgaOSRecovery`;
+    if ( !scalar $root_count ) {
+        $self->_scroll->set_child( $self->_create_real_install_grid );
+        return;
+    }
+    $self->_scroll->set_child( $self->_create_recover_installation_grid );
 }
 
 sub excfailexit {
@@ -373,8 +418,8 @@ EOF
       "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
     my $grub_dir = "/boot/grub";
     system qw{mkdir -pv}, $grub_dir;
-    my $salt     = urandom(64);
-    my $salt_hex = unpack( 'H*', $salt );
+    my $salt       = urandom(64);
+    my $salt_hex   = unpack( 'H*', $salt );
     my $iterations = 1000;
 
     my $hash =
@@ -439,7 +484,7 @@ EOF
 sub activate($self) {
     my $const                     = $self->const;
     my $win                       = Gtk::ApplicationWindow->new( $self->app );
-    my $start_installation_button = Gtk::Button->new("Start installation");
+    my $start_installation_button = Gtk::Button->new("Install in this disk");
     $self->_start_installation_button($start_installation_button);
     $win->set_title("Install AlgaOS");
     my $display  = $win->get_display;
