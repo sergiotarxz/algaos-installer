@@ -19,22 +19,40 @@ BEGIN {
     };
 }
 
-has app                        => ( is => 'lazy' );
-has win                        => ( is => 'rw' );
-has const                      => ( is => 'lazy' );
-has pipe_name                  => ( is => 'ro', required => 1 );
-has secret                     => ( is => 'ro', required => 1 );
-has _grid_row                  => ( is => 'rw', default  => sub { 0 } );
-has _proxy_started             => ( is => 'rw' );
-has _hostname_entry            => ( is => 'rw' );
-has _username_entry            => ( is => 'rw' );
-has _password_entry            => ( is => 'rw' );
-has _start_installation_button => ( is => 'rw' );
-has _proxy_others              => ( is => 'rw' );
-has _dropdown_timezones        => ( is => 'rw' );
-has _dropdown_locale           => ( is => 'rw' );
-has _dropdown_block_devices    => ( is => 'rw' );
-has _scroll                    => ( is => 'rw' );
+has app                            => ( is => 'lazy' );
+has win                            => ( is => 'rw' );
+has const                          => ( is => 'lazy' );
+has pipe_name                      => ( is => 'ro', required => 1 );
+has secret                         => ( is => 'ro', required => 1 );
+has _grid_row                      => ( is => 'rw', default  => sub { 0 } );
+has _proxy_started                 => ( is => 'rw' );
+has _hostname_entry                => ( is => 'rw' );
+has _username_entry                => ( is => 'rw' );
+has _password_entry                => ( is => 'rw' );
+has _start_installation_button     => ( is => 'rw' );
+has _proxy_others                  => ( is => 'rw' );
+has _dropdown_timezones            => ( is => 'rw' );
+has _dropdown_locale               => ( is => 'rw' );
+has _dropdown_block_devices        => ( is => 'rw' );
+has _dropdown_recover_or_reinstall => ( is => 'rw' );
+has _scroll                        => ( is => 'rw' );
+has _recovery_uuid                 => ( is => 'rw' );
+has _root_uuid                     => ( is => 'rw' );
+has _efi_uuid                     => ( is => 'rw' );
+has _current_recovery_partition    => ( is => 'lazy' );
+has _install_is_recover            => ( is => 'rw' );
+
+sub excfailexit {
+    my @command        = @_;
+    my $command_string = join ', ', map { "'$_'" } @command;
+    say "system $command_string";
+    my $return_code = system @command;
+    if ($return_code) {
+        system 'sudo umount -R /mnt/gentoo';
+        say "system $command_string: failed";
+        exit 1;
+    }
+}
 
 sub call_and_increment_grid_row( $self, $coderef ) {
     $coderef->();
@@ -72,7 +90,12 @@ sub _create_install_grid( $self, $desc ) {
     return $grid;
 }
 
-sub _create_real_install_grid($self) {
+sub _overwrite_install_generic($self, %args) {
+	my $disk_prepare = $args{disk_prepare};
+	if (!defined $disk_prepare) {
+		die 'disk_prepare callback not sent';
+	}
+	my $container_block = $args{container_block};
     my $const = $self->const;
     my $grid  = Gtk::Grid->new;
     $grid->add_css_class('transparent_background');
@@ -165,11 +188,11 @@ sub _create_real_install_grid($self) {
             $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
         }
     );
-    my $confirm_button = Gtk::Button->new("Install in this disk and lose all data");
+    my $confirm_button =
+      Gtk::Button->new("Install in this disk and lose all data");
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( $confirm_button,
-                1, $self->_grid_row, 1, 1 );
+            $grid->attach( $confirm_button, 1, $self->_grid_row, 1, 1 );
         }
     );
     $confirm_button->connect(
@@ -184,7 +207,29 @@ sub _create_real_install_grid($self) {
                     if ( $button != 1 ) {
                         return;
                     }
-                    $self->_install;
+                    $self->_install(
+                        container_block    => $container_block,
+                        hostname => $self->_hostname_entry->get_text,
+                        username => $self->_username_entry->get_text,
+                        password => $self->_password_entry->get_text,
+                        timezone => $self->_dropdown_timezones->selected_text,
+                        locale   => $self->_dropdown_locale->selected_text,
+                        complete_systemd => 1,
+                        prepare => sub {
+                            $disk_prepare->();
+                            system 'sudo mkdir /recovery';
+
+                            system qw{sudo mount},
+                              $self->_current_recovery_partition, '/recovery';
+                            excfailexit
+'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
+                            excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf',
+                              '/mnt/gentoo/etc/';
+                            excfailexit
+                              qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
+
+                        }
+                    );
                 }
             );
         }
@@ -193,6 +238,52 @@ sub _create_real_install_grid($self) {
     $grid->set_valign( $const->GTK_ALIGN_CENTER );
     $grid->set_halign( $const->GTK_ALIGN_CENTER );
     return $grid;
+}
+
+sub _create_real_install_grid($self) {
+    my ($block_name) = split /\t+/,
+      $self->_dropdown_block_devices->selected_text;
+    my $block          = "/dev/$block_name";
+    my $efi_block      = "${block}1";
+    my $recovery_block = "${block}3";
+    my $root_block     = "${block}4";
+    $self->_overwrite_install_generic(
+        container_block => $block,
+        disk_prepare    => sub(%args) {
+            excfailexit qw{sudo sgdisk -Z},         $block;
+            excfailexit qw{sudo sgdisk -n 1::+1G},  $block;
+            excfailexit qw{sudo sgdisk -t 1:ef00},  $block;
+            excfailexit qw{sudo sgdisk -c},         "1:AlgaOSEFI", $block;
+            excfailexit qw{sudo sgdisk -n 2::+1G},  $block;
+            excfailexit qw{sudo sgdisk -t 2:ef02},  $block;
+            excfailexit qw{sudo sgdisk -c},         "2:AlgaOSBIOSBoot", $block;
+            excfailexit qw{sudo sgdisk -n 3::+20G}, $block;
+            excfailexit qw{sudo sgdisk -c},         "3:AlgaOSRecovery", $block;
+            excfailexit qw{sudo sgdisk -N 4},       $block;
+            excfailexit qw{sudo sgdisk -c},         "4:AlgaOSRoot", $block;
+            excfailexit qw{sudo dd if=/dev/zero bs=5M count=10},
+              "of=$efi_block";
+            excfailexit qw{sudo dd if=/dev/zero bs=5M count=10},
+              "of=$recovery_block";
+            excfailexit qw{sudo dd if=/dev/zero bs=5M count=10},
+              "of=$root_block";
+            excfailexit qw{sudo mkfs.vfat}, $efi_block;
+            excfailexit qw{sudo mkfs.ext4}, $recovery_block;
+            excfailexit qw{sudo mkfs.ext4}, $root_block;
+            excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
+            excfailexit qw{sudo mount},     $root_block, '/mnt/gentoo';
+            excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
+            excfailexit qw{sudo mount}, $recovery_block, '/mnt/gentoo/recovery';
+            excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
+            excfailexit qw{sudo mount},     $efi_block, '/mnt/gentoo/boot/efi';
+        }
+    );
+}
+
+sub _build__current_recovery_partition($self) {
+    my $cmdline = `cat /proc/cmdline`;
+    my ($partition) = $cmdline =~ /live:(\S+)/;
+    return $partition;
 }
 
 sub _create_main_grid($self) {
@@ -240,38 +331,178 @@ sub _create_main_grid($self) {
     return $grid;
 }
 
+sub _create_recover_installation_grid($self) {
+    my $const = $self->const;
+    my $grid  = Gtk::Grid->new;
+    $grid->add_css_class('transparent_background');
+    $self->call_and_increment_grid_row(
+        sub {
+            my $label = Gtk::Label->new('Install AlgaOS');
+            $label->add_css_class('title-1');
+            $grid->attach( $label, 0, $self->_grid_row, 3, 1 );
+        }
+    );
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( Gtk::Label->new('Recover AlgaOS or reinstall it?'),
+                0, $self->_grid_row, 1, 1 );
+            my $dropdown = Gtk::Dropdown->new( [qw/Recover Reinstall/] );
+            $self->_dropdown_recover_or_reinstall($dropdown);
+            $grid->attach( $dropdown, 1, $self->_grid_row, 1, 1 );
+        }
+    );
+    $self->call_and_increment_grid_row(
+        sub {
+            my $button = Gtk::Button->new('Continue');
+            $button->connect(
+                clicked => sub {
+                    if ( $self->_dropdown_recover_or_reinstall->selected_text eq
+                        'Reinstall' )
+                    {
+                        $self->_scroll->set_child(
+                            $self->_overwrite_installation_menu );
+                        return;
+                    }
+                    system qw{sudo mount}, $self->_root_uuid, '/mnt/gentoo';
+                    $self->_restore_system( '/stage3-algaos-latest.tar.xz',
+                        '/mnt/gentoo', 1 );
+                }
+            );
+            $grid->attach( $button, 1, $self->_grid_row, 1, 1 );
+        }
+    );
+
+    $grid->set_valign( $const->GTK_ALIGN_CENTER );
+    $grid->set_halign( $const->GTK_ALIGN_CENTER );
+    return $grid;
+}
+
+sub _overwrite_installation_menu($self) {
+    my ($block_name) = split /\t+/,
+      $self->_dropdown_block_devices->selected_text;
+    my $block          = "/dev/$block_name";
+    my $efi_block      = $self->_efi_uuid;
+    my $recovery_block = $self->_recovery_uuid;
+    my $root_block     = $self->_root_uuid;
+    $self->_overwrite_install_generic(
+        container_block => $block,
+        disk_prepare    => sub(%args) {
+            excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
+            excfailexit qw{sudo mount},     $root_block, '/mnt/gentoo';
+            excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
+            excfailexit qw{sudo mount}, $recovery_block, '/mnt/gentoo/recovery';
+            excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
+            excfailexit qw{sudo mount},     $efi_block, '/mnt/gentoo/boot/efi';
+        }
+    );
+}
+
+# TODO: Slop function, in Chatyipity we trust
+sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
+	$self->_install_is_recover(1);
+    $self->_install(
+        complete_systemd => 0,
+        root_block            => $self->_root_uuid,
+        prepare          => sub {
+            excfailexit qw{sudo mount}, $self->_root_uuid, '/mnt/gentoo';
+            excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
+            excfailexit qw{sudo mount}, $self->_recovery_uuid,
+              '/mnt/gentoo/recovery';
+            system 'sudo mkdir /recovery';
+
+            system qw{sudo mount},
+              $self->_current_recovery_partition, '/recovery';
+
+            die "Invalid archive\n" unless -f $archive;
+            die "Invalid root\n"    unless -d $root;
+            die "Refusing /\n" if $root eq '/';
+            die "Archive inside root\n"
+              if index( $archive, "$root/" ) == 0;
+
+            my @keep = qw(
+              passwd shadow group gshadow subuid subgid
+              machine-id hostname hosts locale.conf locale.gen timezone adjtime
+              fstab crypttab ssh udev/rules.d
+              NetworkManager/system-connections systemd
+            );
+
+            my $sudo = sub (@cmd) {
+                system( 'sudo', @cmd ) == 0
+                  or die "sudo @cmd failed\n";
+            };
+
+            $sudo->( 'tar', '-tf', $archive );
+
+            my $old = "$root/etc.old";
+
+            $sudo->( 'rm', '-rf', '--', $old );
+            $sudo->( 'cp', '-a', '--', "$root/etc", $old );
+            -d $old or die "Failed to create /etc.old\n";
+
+            $sudo->(
+                'find',      $root, '-mindepth', 1,
+                '-maxdepth', 1,     '!',         '-name',
+                'home',      '!',   '-name',     'etc.old',
+                '-exec',     'rm',  '-rf',       '--',
+                '{}',        '+'
+            );
+
+            $sudo->(
+                'tar',                 '-xpf',
+                $archive,              '-C',
+                $root,                 '--numeric-owner',
+                '--xattrs-include=*',  '--exclude=home',
+                '--exclude=./home',    '--exclude=home/*',
+                '--exclude=./home/*',  '--exclude=etc.old',
+                '--exclude=./etc.old', '--exclude=etc.old/*',
+                '--exclude=./etc.old/*'
+            );
+
+            if ($preserve_etc) {
+                for my $file (@keep) {
+                    my $src = "$old/$file";
+                    my $dst = "$root/etc/$file";
+                    next unless -e $src;
+
+                    $sudo->( 'rm', '-rf', '--', $dst );
+
+                    my $dir = $dst =~ s{/[^/]+$}{}r;
+                    $sudo->( 'mkdir', '-p', '--', $dir );
+                    $sudo->( 'cp', '-a', '--', $src, $dst );
+                }
+            }
+            excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
+            excfailexit
+              qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
+        }
+    );
+}
+
 sub _on_click_select_media($self) {
     my ($block_name) = split /\t+/,
       $self->_dropdown_block_devices->selected_text;
     my $block      = "/dev/$block_name";
     my $root_count = my ( $root_label, $root_uuid ) = split /\s+/,
       `lsblk -o PARTLABEL,PARTUUID $block | grep AlgaOSRoot`;
+    my $efi_count = my ( $efi_label, $efi_uuid ) = split /\s+/,
+      `lsblk -o PARTLABEL,PARTUUID $block | grep AlgaOSEFI`;
     my $recovery_count = my ( $recovery_label, $recovery_uuid ) = split /\s+/,
       `lsblk -o PARTLABEL,PARTUUID $block | grep AlgaOSRecovery`;
     if ( !scalar $root_count ) {
         $self->_scroll->set_child( $self->_create_real_install_grid );
         return;
     }
+    $self->_recovery_uuid($recovery_uuid);
+    $self->_root_uuid($root_uuid);
+    $self->_efi_uuid($efi_uuid);
     $self->_scroll->set_child( $self->_create_recover_installation_grid );
-}
-
-sub excfailexit {
-    my @command        = @_;
-    my $command_string = join ', ', map { "'$_'" } @command;
-    say "system $command_string";
-    my $return_code = system @command;
-    if ($return_code) {
-        system 'sudo umount -R /mnt/gentoo';
-        say "system $command_string: failed";
-        exit 1;
-    }
 }
 
 sub _failed_install {
     my $self = shift;
     say 'Failure';
     $self->_scroll->set_child(
-        $self->_create_install_grid('The installation failed') );
+        $self->_create_install_grid("The @{[$self->_install_is_recover ? 'recovery' : 'installation']} failed") );
 }
 
 sub _succesful_install {
@@ -279,64 +510,32 @@ sub _succesful_install {
     say 'Success';
     $self->_scroll->set_child(
         $self->_create_install_grid(
-'The installation went well reboot and unplug the booting media use it'
+"The @{[$self->_install_is_recover ? 'recovery' : 'installation']} went well reboot and unplug the booting media use it"
         )
     );
 }
 
-sub _install {
-    my $self = shift;
+sub _install($self, %args) {
+    my ( $prepare, $hostname, $username, $password, $timezone, $locale,
+        $complete_systemd, $container_block )
+      = @args{
+        qw/prepare hostname username password timezone locale complete_systemd container_block/
+      };
+    if ( !defined $prepare || ref $prepare ne 'CODE' ) {
+        die 'No prepare sub';
+    }
     $self->_scroll->set_child(
-        $self->_create_install_grid('The system is now being installed') );
-    my ($block_name) = split /\t+/,
-      $self->_dropdown_block_devices->selected_text;
-    my $block = "/dev/$block_name";
-    my $pid   = fork;
+        $self->_create_install_grid("The system is now being @{[$self->_install_is_recover ? 'recovered' : 'installed']}") );
+    my $pid = fork;
     if ( !$pid ) {
         local $SIG{INT} = sub {
             system 'sudo umount -R /mnt/gentoo';
         };
-
-        excfailexit qw{sudo sgdisk -Z},         $block;
-        excfailexit qw{sudo sgdisk -n 1::+1G},  $block;
-        excfailexit qw{sudo sgdisk -t 1:ef00},  $block;
-        excfailexit qw{sudo sgdisk -c},         "1:AlgaOSEFI", $block;
-        excfailexit qw{sudo sgdisk -n 2::+1G},  $block;
-        excfailexit qw{sudo sgdisk -t 2:ef02},  $block;
-        excfailexit qw{sudo sgdisk -c},         "2:AlgaOSBIOSBoot", $block;
-        excfailexit qw{sudo sgdisk -n 3::+20G}, $block;
-        excfailexit qw{sudo sgdisk -c},         "3:AlgaOSRecovery", $block;
-        excfailexit qw{sudo sgdisk -N 4},       $block;
-        excfailexit qw{sudo sgdisk -c},         "4:AlgaOSRoot", $block;
-        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}1";
-        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}3";
-        excfailexit qw{sudo dd if=/dev/zero bs=5M count=10}, "of=${block}4";
-        excfailexit qw{sudo mkfs.vfat},                      "${block}1";
-        excfailexit qw{sudo mkfs.ext4},                      "${block}3";
-        excfailexit qw{sudo mkfs.ext4},                      "${block}4";
-        excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
-        excfailexit qw{sudo mount},     "${block}4", '/mnt/gentoo';
-        excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
-        excfailexit qw{sudo mount},     "${block}3", '/mnt/gentoo/recovery';
-        excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
-        excfailexit qw{sudo mount},     "${block}1", '/mnt/gentoo/boot/efi';
-        system 'sudo mkdir /recovery';
-
-        if ( system qw{sudo mount LABEL=ALGAOS}, '/recovery' ) {
-            system qw{sudo mount PARTUUID=AlgaOSRecovery}, '/recovery';
-        }
-        excfailexit
-'sudo tar -C /mnt/gentoo -xvpf /stage3-algaos-latest.tar.xz --numeric-owner --xattrs-include="*.*"';
-        excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
-        excfailexit
-          qw{sudo rsync -P -a -v /recovery/rootfs.squashfs /mnt/gentoo/recovery/};
+        $prepare->();
         excfailexit
           qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
-          $self->_hostname_entry->get_text, $self->_username_entry->get_text,
-          $self->_password_entry->get_text,
-          $self->_dropdown_timezones->selected_text,
-          $self->_dropdown_locale->selected_text,
-          $block;
+          $hostname, $username, $password, $timezone, $locale,
+          $container_block, $complete_systemd;
 
         system 'sudo umount -R /mnt/gentoo';
         say "Finish $$";
@@ -367,7 +566,8 @@ sub _install {
 }
 
 sub chroot_install_commands {
-    my ( $hostname, $username, $password, $timezone, $locale, $block_devices )
+    my ( $hostname, $username, $password, $timezone, $locale, $block_devices,
+        $complete_systemd )
       = @ARGV;
     system qw{mount -t proc proc /mnt/gentoo/proc};
     system qw{mount -t sysfs sysfs /mnt/gentoo/sys};
@@ -389,22 +589,35 @@ sub chroot_install_commands {
     say $fh <<"EOF";
 PARTUUID=$devices{AlgaOSEFI}		/boot/efi		vfat		defaults        1 2
 PARTUUID=$devices{AlgaOSRoot}		/		        ext4		defaults		0 1
-PARTUUID=$devices{AlgaOSRecovery}   /recovery 		ext4		defaults		0 1
+PARTUUID=$devices{AlgaOSRecovery}   	/recovery 		ext4		defaults		0 1
 EOF
     close $fh;
-    excfailexit qw{systemd-machine-id-setup};
-    excfailexit qw{systemctl preset-all};
+
+    if ($complete_systemd) {
+        excfailexit qw{systemd-machine-id-setup};
+        excfailexit qw{systemctl preset-all};
+    }
+    else {
+        excfailexit qw{systemctl preset-all --preset-mode=enable-only};
+    }
     excfailexit qw{systemctl enable gdm};
     excfailexit qw{systemctl enable NetworkManager};
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
     excfailexit qw{systemctl enable chronyd};
-    excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
-      '/etc/localtime';
-    system qw{useradd -m}, $username, qw{-s /bin/bash};
-    open $fh, '|-', qw{passwd --stdin}, $username;
-    say $fh $password;
-    close $fh;
+    if ( defined $timezone ) {
+        excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
+          '/etc/localtime';
+    }
+    excfailexit qw{eselect locale set}, $locale;
+    if ( defined $username ) {
+        system qw{useradd -m}, $username, qw{-s /bin/bash};
+    }
+    if ( defined $username && defined $password ) {
+        open $fh, '|-', qw{passwd --stdin}, $username;
+        say $fh $password;
+        close $fh;
+    }
 
     if ( $? != 0 ) {
         excfailexit "forcing-a-fail-because-passwd-failed-and-iam-lazy";
@@ -418,19 +631,32 @@ EOF
       "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
     my $grub_dir = "/boot/grub";
     system qw{mkdir -pv}, $grub_dir;
-    my $salt       = urandom(64);
-    my $salt_hex   = unpack( 'H*', $salt );
-    my $iterations = 1000;
+    open $fh, '<', '/grub_hash';
+    local $/ = undef;
+    my $hash_complete = <$fh>;
+    close $fh;
 
-    my $hash =
-      PBKDF2::Tiny::derive_hex( 'SHA-512', $password, $salt, $iterations, 64 );
+    if ( !$hash_complete ) {
+        my $salt       = urandom(64);
+        my $salt_hex   = unpack( 'H*', $salt );
+        my $iterations = 1000;
+
+        die 'No pass' if !$password;
+        my $hash =
+          PBKDF2::Tiny::derive_hex( 'SHA-512', $password, $salt, $iterations,
+            64 );
+        $hash_complete = "$iterations.$salt_hex.$hash";
+        open my $fh, '>', '/grub_hash';
+        print $fh $hash_complete;
+        close $fh;
+    }
 
     open $fh, '>', "$grub_dir/grub.cfg";
     say $fh <<"EOF";
 set timeout=5
 set default=0
 set superusers="admin"
-password_pbkdf2 admin grub.pbkdf2.sha512.$iterations.$salt_hex.$hash
+password_pbkdf2 admin grub.pbkdf2.sha512.$hash_complete
 EOF
 
     for my $kver ( glob("/boot/kernel-*") ) {
@@ -517,6 +743,7 @@ sub activate($self) {
 }
 
 sub run($self) {
+    system qw{sudo umount -R /mnt/gentoo};
     $self->app->connect(
         'activate' => sub {
             $self->activate;
