@@ -38,7 +38,7 @@ has _dropdown_recover_or_reinstall => ( is => 'rw' );
 has _scroll                        => ( is => 'rw' );
 has _recovery_uuid                 => ( is => 'rw' );
 has _root_uuid                     => ( is => 'rw' );
-has _efi_uuid                     => ( is => 'rw' );
+has _efi_uuid                      => ( is => 'rw' );
 has _current_recovery_partition    => ( is => 'lazy' );
 has _install_is_recover            => ( is => 'rw' );
 
@@ -49,6 +49,7 @@ sub excfailexit {
     my $return_code = system @command;
     if ($return_code) {
         system 'sudo umount -R /mnt/gentoo';
+        system 'sudo umount -R /recovery';
         say "system $command_string: failed";
         exit 1;
     }
@@ -90,14 +91,14 @@ sub _create_install_grid( $self, $desc ) {
     return $grid;
 }
 
-sub _overwrite_install_generic($self, %args) {
-	my $disk_prepare = $args{disk_prepare};
-	if (!defined $disk_prepare) {
-		die 'disk_prepare callback not sent';
-	}
-	my $container_block = $args{container_block};
-    my $const = $self->const;
-    my $grid  = Gtk::Grid->new;
+sub _overwrite_install_generic( $self, %args ) {
+    my $disk_prepare = $args{disk_prepare};
+    if ( !defined $disk_prepare ) {
+        die 'disk_prepare callback not sent';
+    }
+    my $container_block = $args{container_block};
+    my $const           = $self->const;
+    my $grid            = Gtk::Grid->new;
     $grid->add_css_class('transparent_background');
     $self->call_and_increment_grid_row(
         sub {
@@ -208,14 +209,14 @@ sub _overwrite_install_generic($self, %args) {
                         return;
                     }
                     $self->_install(
-                        container_block    => $container_block,
-                        hostname => $self->_hostname_entry->get_text,
-                        username => $self->_username_entry->get_text,
-                        password => $self->_password_entry->get_text,
+                        container_block => $container_block,
+                        hostname        => $self->_hostname_entry->get_text,
+                        username        => $self->_username_entry->get_text,
+                        password        => $self->_password_entry->get_text,
                         timezone => $self->_dropdown_timezones->selected_text,
                         locale   => $self->_dropdown_locale->selected_text,
                         complete_systemd => 1,
-                        prepare => sub {
+                        prepare          => sub {
                             $disk_prepare->();
                             system 'sudo mkdir /recovery';
 
@@ -250,7 +251,7 @@ sub _create_real_install_grid($self) {
     $self->_overwrite_install_generic(
         container_block => $block,
         disk_prepare    => sub(%args) {
-            excfailexit qw{sudo sgdisk -Z},         $block;
+            system qw{sudo sgdisk -Z}, $block;
             excfailexit qw{sudo sgdisk -n 1::+1G},  $block;
             excfailexit qw{sudo sgdisk -t 1:ef00},  $block;
             excfailexit qw{sudo sgdisk -c},         "1:AlgaOSEFI", $block;
@@ -381,12 +382,24 @@ sub _overwrite_installation_menu($self) {
     my ($block_name) = split /\t+/,
       $self->_dropdown_block_devices->selected_text;
     my $block          = "/dev/$block_name";
-    my $efi_block      = $self->_efi_uuid;
-    my $recovery_block = $self->_recovery_uuid;
-    my $root_block     = $self->_root_uuid;
+    my $efi_block      = 'PARTUUID=' . $self->_efi_uuid;
+    my $recovery_block = 'PARTUUID=' . $self->_recovery_uuid;
+    my $root_block     = 'PARTUUID=' . $self->_root_uuid;
     $self->_overwrite_install_generic(
         container_block => $block,
-        disk_prepare    => sub(%args) {
+        disk_prepare => sub(%args) {
+            excfailexit qw{sudo dd if=/dev/zero bs=1M count=10},
+              'of=/dev/disk/by-partuuid/' . $self->_root_uuid;
+            excfailexit qw{sudo mkfs.ext4},
+              '/dev/disk/by-partuuid/' . $self->_root_uuid;
+            excfailexit qw{sudo dd if=/dev/zero bs=1M count=10},
+              'of=/dev/disk/by-partuuid/' . $self->_recovery_uuid;
+            excfailexit qw{sudo mkfs.ext4},
+              '/dev/disk/by-partuuid/' . $self->_recovery_uuid;
+            excfailexit qw{sudo dd if=/dev/zero bs=1M count=10},
+              'of=/dev/disk/by-partuuid/' . $self->_efi_uuid;
+            excfailexit qw{sudo mkfs.vfat},
+              '/dev/disk/by-partuuid/' . $self->_efi_uuid;
             excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
             excfailexit qw{sudo mount},     $root_block, '/mnt/gentoo';
             excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
@@ -399,14 +412,21 @@ sub _overwrite_installation_menu($self) {
 
 # TODO: Slop function, in Chatyipity we trust
 sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
-	$self->_install_is_recover(1);
+    $self->_install_is_recover(1);
+    my ($block_name) = split /\t+/,
+      $self->_dropdown_block_devices->selected_text;
+    my $block = "/dev/$block_name";
     $self->_install(
         complete_systemd => 0,
-        root_block            => $self->_root_uuid,
+        container_block  => $block,
         prepare          => sub {
-            excfailexit qw{sudo mount}, $self->_root_uuid, '/mnt/gentoo';
+            excfailexit qw{sudo mount}, 'PARTUUID=' . $self->_root_uuid,
+              '/mnt/gentoo';
+            excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/boot/efi';
+            excfailexit qw{sudo mount}, 'PARTUUID=' . $self->_efi_uuid,
+              '/mnt/gentoo/boot/efi';
             excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
-            excfailexit qw{sudo mount}, $self->_recovery_uuid,
+            excfailexit qw{sudo mount}, 'PARTUUID=' . $self->_recovery_uuid,
               '/mnt/gentoo/recovery';
             system 'sudo mkdir /recovery';
 
@@ -435,27 +455,28 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
 
             my $old = "$root/etc.old";
 
-            $sudo->( 'rm', '-rf', '--', $old );
-            $sudo->( 'cp', '-a', '--', "$root/etc", $old );
-            -d $old or die "Failed to create /etc.old\n";
+            eval { $sudo->( 'cp', '-a', '--', "$root/etc", $old ); };
 
             $sudo->(
-                'find',      $root, '-mindepth', 1,
-                '-maxdepth', 1,     '!',         '-name',
-                'home',      '!',   '-name',     'etc.old',
-                '-exec',     'rm',  '-rf',       '--',
-                '{}',        '+'
+                'find',      $root,   '-mindepth', 1,
+                '-maxdepth', 1,       '!',         '-name',
+                'boot',      '!',     '-name',     'grub_hash',
+                '!',         '-name', 'recovery',  '!',
+                '-name',     'home',  '!',         '-name',
+                'etc.old',   '-exec', 'rm',        '-rf',
+                '--',        '{}',    '+'
             );
 
             $sudo->(
-                'tar',                 '-xpf',
-                $archive,              '-C',
-                $root,                 '--numeric-owner',
-                '--xattrs-include=*',  '--exclude=home',
-                '--exclude=./home',    '--exclude=home/*',
-                '--exclude=./home/*',  '--exclude=etc.old',
-                '--exclude=./etc.old', '--exclude=etc.old/*',
-                '--exclude=./etc.old/*'
+                'tar',                   '-xpf',
+                $archive,                '-C',
+                $root,                   '--numeric-owner',
+                '--xattrs-include=*',    '--exclude=home',
+                '--exclude=./home',      '--exclude=home/*',
+                '--exclude=./home/*',    '--exclude=etc.old',
+                '--exclude=./etc.old',   '--exclude=etc.old/*',
+                '--exclude=./etc.old/*', '--exclude=grub_hash',
+                '--exclude=./grub_hash',
             );
 
             if ($preserve_etc) {
@@ -464,11 +485,10 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
                     my $dst = "$root/etc/$file";
                     next unless -e $src;
 
-                    $sudo->( 'rm', '-rf', '--', $dst );
-
-                    my $dir = $dst =~ s{/[^/]+$}{}r;
-                    $sudo->( 'mkdir', '-p', '--', $dir );
-                    $sudo->( 'cp', '-a', '--', $src, $dst );
+                    $sudo->(
+                        'rsync', '-a', qw{--mkpath --numeric-ids},
+                        '--',    $src, $dst
+                    );
                 }
             }
             excfailexit qw{sudo cp -Lv}, '/etc/resolv.conf', '/mnt/gentoo/etc/';
@@ -502,7 +522,10 @@ sub _failed_install {
     my $self = shift;
     say 'Failure';
     $self->_scroll->set_child(
-        $self->_create_install_grid("The @{[$self->_install_is_recover ? 'recovery' : 'installation']} failed") );
+        $self->_create_install_grid(
+"The @{[$self->_install_is_recover ? 'recovery' : 'installation']} failed"
+        )
+    );
 }
 
 sub _succesful_install {
@@ -515,7 +538,7 @@ sub _succesful_install {
     );
 }
 
-sub _install($self, %args) {
+sub _install( $self, %args ) {
     my ( $prepare, $hostname, $username, $password, $timezone, $locale,
         $complete_systemd, $container_block )
       = @args{
@@ -525,19 +548,30 @@ sub _install($self, %args) {
         die 'No prepare sub';
     }
     $self->_scroll->set_child(
-        $self->_create_install_grid("The system is now being @{[$self->_install_is_recover ? 'recovered' : 'installed']}") );
+        $self->_create_install_grid(
+"The system is now being @{[$self->_install_is_recover ? 'recovered' : 'installed']}"
+        )
+    );
     my $pid = fork;
     if ( !$pid ) {
         local $SIG{INT} = sub {
             system 'sudo umount -R /mnt/gentoo';
+            system 'sudo umount -R /recovery';
         };
-        $prepare->();
-        excfailexit
-          qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
-          $hostname, $username, $password, $timezone, $locale,
-          $container_block, $complete_systemd;
+        eval {
+            $prepare->();
+            excfailexit
+              qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
+              $hostname, $username, $password, $timezone, $locale,
+              $container_block, $complete_systemd;
 
-        system 'sudo umount -R /mnt/gentoo';
+            system 'sudo umount -R /mnt/gentoo';
+            system 'sudo umount -R /recovery';
+        };
+        if ($@) {
+            warn $@;
+            exit 1;
+        }
         say "Finish $$";
         exit 0;
     }
@@ -605,15 +639,17 @@ EOF
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
     excfailexit qw{systemctl enable chronyd};
-    if ( defined $timezone ) {
+    if ($timezone) {
         excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
           '/etc/localtime';
     }
-    excfailexit qw{eselect locale set}, $locale;
-    if ( defined $username ) {
+    if ($locale) {
+        excfailexit qw{eselect locale set}, $locale;
+    }
+    if ($username) {
         system qw{useradd -m}, $username, qw{-s /bin/bash};
     }
-    if ( defined $username && defined $password ) {
+    if ( $username && $password ) {
         open $fh, '|-', qw{passwd --stdin}, $username;
         say $fh $password;
         close $fh;
@@ -693,12 +729,14 @@ EOF
     $ENV{XDG_DATA_HOME} = '/home/test/.local/share';
     $ENV{XDG_DATA_DIRS} =
 '/home/test/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share';
-    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
+    if ($username) {
+        excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
 "flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
-    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
-      "flatpak --user install --noninteractive com.valvesoftware.Steam";
-    excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
-      "flatpak --user install --noninteractive com.usebottles.bottles";
+        excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
+          "flatpak --user install --noninteractive com.valvesoftware.Steam";
+        excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
+          "flatpak --user install --noninteractive com.usebottles.bottles";
+    }
     excfailexit qw{grub-install --target=i386-pc --recheck}, $block_devices;
     excfailexit qw{grub-install
       --target=x86_64-efi
@@ -744,6 +782,7 @@ sub activate($self) {
 
 sub run($self) {
     system qw{sudo umount -R /mnt/gentoo};
+    system 'sudo umount -R /recovery';
     $self->app->connect(
         'activate' => sub {
             $self->activate;
