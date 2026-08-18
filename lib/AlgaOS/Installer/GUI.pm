@@ -54,6 +54,7 @@ sub excfailexit {
         exit 1;
     }
 }
+excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
 
 sub call_and_increment_grid_row( $self, $coderef ) {
     $coderef->();
@@ -271,7 +272,6 @@ sub _create_real_install_grid($self) {
             excfailexit qw{sudo mkfs.vfat}, $efi_block;
             excfailexit qw{sudo mkfs.ext4}, $recovery_block;
             excfailexit qw{sudo mkfs.ext4}, $root_block;
-            excfailexit qw{sudo mkdir -pv /mnt/gentoo/};
             excfailexit qw{sudo mount},     $root_block, '/mnt/gentoo';
             excfailexit qw{sudo mkdir -pv}, '/mnt/gentoo/recovery';
             excfailexit qw{sudo mount}, $recovery_block, '/mnt/gentoo/recovery';
