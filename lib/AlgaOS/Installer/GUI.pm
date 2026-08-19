@@ -66,7 +66,7 @@ sub _build_const {
 }
 
 sub _build_app {
-    return Gtk::Application->new( "me.sergiotarxz.hola", 0 );
+    return Gtk::Application->new( "com.algaos.Installer", 0 );
 }
 
 sub _create_install_grid( $self, $desc ) {

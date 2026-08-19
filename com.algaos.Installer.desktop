@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Instalar AlgaOS
+GenericName=Instalador
+Exec=bash -c 'cd $HOME/algaos-installer/; perl Build.PL && perl Build && perl scripts/installer.pl'
+Icon=algaos-installer-logo
+Terminal=true
+Type=Application
