@@ -12,6 +12,8 @@ use JSON;
 use POSIX qw/WNOHANG/;
 use PBKDF2::Tiny;
 use Crypt::URandom qw/urandom/;
+use File::ShareDir ':ALL';
+my $dist_dir_files = dist_dir('AlgaOS-Installer');
 
 BEGIN {
     *CORE::GLOBAL::exit = sub {
@@ -753,7 +755,7 @@ sub activate($self) {
     $win->set_title("Install AlgaOS");
     my $display  = $win->get_display;
     my $provider = Gtk::CssProvider->new;
-    $provider->load_from_path('style.css');
+    $provider->load_from_path($dist_dir_files.'/style.css');
     $display->add_css_provider( $provider,
         $const->GTK_STYLE_PROVIDER_PRIORITY_APPLICATION );
     my $width  = 800;
@@ -762,7 +764,7 @@ sub activate($self) {
     $win->set_resizable(0);
     $self->win($win);
     my $overlay = Gtk::Overlay->new;
-    my $file    = Gio::File->new('beach0.jpg');
+    my $file    = Gio::File->new($dist_dir_files.'/beach0.jpg');
     my $texture = Gdk::Texture->new($file);
     my $picture = Gtk::Picture->new($texture);
     $overlay->set_child($picture);

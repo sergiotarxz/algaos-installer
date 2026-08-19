@@ -121,10 +121,12 @@ my $build = Module::Build->new(
         'Moo'                => 0,
         'PBKDF2::Tiny'       => 0,
         'JSON'               => 0,
+	'File::ShareDir'     => 0,
     },
     script_files => [
         'scripts/algaos-installer',
     ],
+    share_dir => 'share',
     extra_compiler_flags => scalar `pkg-config --cflags gtk4` . " -I$ENV{PWD}",
     extra_linker_flags   => scalar `pkg-config --libs gtk4`,
 );
