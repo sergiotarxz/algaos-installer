@@ -1,3 +1,4 @@
+#!/usr/bin/env perl
 use v5.38.0;
 use strict;
 use warnings;
