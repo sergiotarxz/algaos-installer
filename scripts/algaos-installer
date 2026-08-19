@@ -3,8 +3,6 @@ use v5.38.0;
 use strict;
 use warnings;
 
-use blib;
-
 use Data::Dumper;
 use AlgaOS::Installer::GUI;
 use AlgaOS::Installer::Util;
