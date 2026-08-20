@@ -15,6 +15,8 @@ use Crypt::URandom qw/urandom/;
 use File::ShareDir ':ALL';
 my $dist_dir_files = dist_dir('AlgaOS-Installer');
 
+my @perl_args_chroot = @ARGV;
+
 BEGIN {
     *CORE::GLOBAL::exit = sub {
         POSIX::_exit( $_[0] // 0 );
@@ -563,7 +565,7 @@ sub _install( $self, %args ) {
         eval {
             $prepare->();
             excfailexit
-              qw{sudo perl -Mblib -MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
+              qw{sudo perl}, @perl_args_chroot, qw{-MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
               $hostname, $username, $password, $timezone, $locale,
               $container_block, $complete_systemd;
 
