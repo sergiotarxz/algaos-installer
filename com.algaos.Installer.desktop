@@ -3,6 +3,6 @@ Version=1.0
 Name=Instalar AlgaOS
 GenericName=Instalador
 Exec=algaos-installer
-Icon=algaos-installer-logo
+Icon=com.algaos.Installer.svg
 Terminal=true
 Type=Application
