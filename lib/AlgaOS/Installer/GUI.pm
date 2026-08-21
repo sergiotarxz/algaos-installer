@@ -711,6 +711,7 @@ menuentry "AlgaOS" --unrestricted {
 EOF
     }
     excfailexit qw{emerge --sync};
+    excfailexit qw{plymouth-set-default-theme -R colorful_loop};
     for my $kver ( glob("/boot/recovery/kernel-*") ) {
         die "No kernel found in /boot/recovery\n" unless $kver;
 
