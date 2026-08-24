@@ -706,23 +706,24 @@ EOF
         $kver =~ s{.*/kernel-}{};
         say $fh <<"EOF";
 menuentry "AlgaOS" --unrestricted {
-    linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot}
+    linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot} splash quiet
     initrd /boot/initramfs-$kver.img
 };
 EOF
     }
     excfailexit qw{emerge --sync};
+    excfailexit qw{plymouth-set-default-theme -R colorful_loop};
     for my $kver ( glob("/boot/recovery/kernel-*") ) {
         die "No kernel found in /boot/recovery\n" unless $kver;
 
         $kver =~ s{.*/kernel-}{};
         excfailexit qw{dracut --force --kver}, $kver,
-          qw{--no-hostonly --stdlog 6 --force --add dmsquash-live},
+          qw{--no-hostonly --stdlog 6 --force --add}, "plymouth dmsquash-live",
           "/boot/recovery/initramfs-${kver}.img";
 
         say $fh <<"EOF";
 menuentry "AlgaOS Recovery" --users admin {
-    linux /boot/recovery/kernel-$kver root=live:PARTUUID=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug
+    linux /boot/recovery/kernel-$kver root=live:PARTUUID=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug splash quiet
     initrd /boot/recovery/initramfs-$kver.img
 };
 EOF
