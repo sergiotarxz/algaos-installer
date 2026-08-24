@@ -652,6 +652,7 @@ EOF
     }
     if ($username) {
         system qw{useradd -m}, $username, qw{-s /bin/bash};
+        system qw{gpasswd -a}, $username, qw{plugdev};
     }
     if ( $username && $password ) {
         open $fh, '|-', qw{passwd --stdin}, $username;
