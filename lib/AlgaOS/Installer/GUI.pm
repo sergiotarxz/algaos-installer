@@ -643,6 +643,7 @@ EOF
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
     excfailexit qw{systemctl enable chronyd};
+    excfailexit qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service};
     if ($timezone) {
         excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
           '/etc/localtime';
@@ -665,9 +666,11 @@ EOF
     }
     my $sudoers_dir = '/etc/sudoers.d';
     excfailexit qw{mkdir -pv}, $sudoers_dir;
-    open $fh, '>', "$sudoers_dir/algaos";
-    say $fh "user ALL=(ALL) NOPASSWD: ALL";
-    close $fh;
+    if ($username) {
+        open $fh, '>', "$sudoers_dir/algaos";
+        say $fh "$username ALL=(ALL) NOPASSWD: ALL";
+        close $fh;
+    }
     excfailexit
       "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
     my $grub_dir = "/boot/grub";
