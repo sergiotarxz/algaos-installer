@@ -650,6 +650,7 @@ EOF
     excfailexit qw{systemctl enable chronyd};
     excfailexit
       qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service};
+
     if ($timezone) {
         excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
           '/etc/localtime';
@@ -797,8 +798,8 @@ sub activate($self) {
     $win->present;
 }
 
-sub _internet_wall {
-    my $grid  = Gtk::Grid->new;
+sub _internet_wall($self) {
+    my $grid = Gtk::Grid->new;
     $self->call_and_increment_grid_row(
         sub {
             my $label = Gtk::Label->new('Install AlgaOS');
@@ -808,29 +809,41 @@ sub _internet_wall {
     );
     $self->call_and_increment_grid_row(
         sub {
-            $grid->attach( Gtk::Label->new('To install or restore AlgaOS connect to internet, sorry for the inconvenience'),
-                0, $self->_grid_row, 1, 1 );
+            $grid->attach(
+                Gtk::Label->new(
+'To install or restore AlgaOS connect to internet, sorry for the inconvenience'
+                ),
+                0,
+                $self->_grid_row,
+                1, 1
+            );
         }
     );
-    my $first_try = 1
+    my $first_try = 1;
     $self->app->timeout_add(
         1000,
         sub {
             if ($first_try) {
-                if (!system qw{sudo mount PARTLABEL=AlgaOSRoot /mnt/gentoo}) {
-                    system qw{sudo rsync -a -P /mnt/gentoo/etc/NetworkManager/system-connections/ /etc/NetworkManager/system-connections/};
+                if ( !system qw{sudo mount PARTLABEL=AlgaOSRoot /mnt/gentoo} ) {
+                    system
+                      qw{sudo rsync -a -P /mnt/gentoo/etc/NetworkManager/system-connections/ /etc/NetworkManager/system-connections/};
                     system qw{sudo systemctl restart NetworkManager};
                     system qw{sudo systemctl restart systemd-resolved};
+                    system qw{sudo umount -R /mnt/gentoo};
                 }
             }
             $first_try = 0;
-            if (!system qw{ping -c1 google.com}) {
-                $self->_scroll->set_child($self->_create_main_grid);
+            if ( !system qw{ping -c1 google.com} ) {
+                $self->_scroll->set_child( $self->_create_main_grid );
                 return 0;
             }
             return 1;
         }
     );
+    my $const = $self->const;
+    $grid->add_css_class('transparent_background');
+    $grid->set_valign( $const->GTK_ALIGN_CENTER );
+    $grid->set_halign( $const->GTK_ALIGN_CENTER );
     return $grid;
 }
 
