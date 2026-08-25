@@ -445,9 +445,9 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
 
             my @keep = qw(
               passwd shadow group gshadow subuid subgid
-              machine-id hostname hosts locale.conf locale.gen timezone adjtime
+              machine-id hostname hosts locale.conf locale.gen localtime adjtime
               fstab crypttab ssh udev/rules.d
-              NetworkManager/system-connections systemd
+              NetworkManager/system-connections systemd sudoers.d
             );
 
             my $sudo = sub (@cmd) {
@@ -486,7 +486,13 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
             if ($preserve_etc) {
                 for my $file (@keep) {
                     my $src = "$old/$file";
+                    if (-d $src) {
+                        $src .= '/';
+                    }
                     my $dst = "$root/etc/$file";
+                    if (-d $dst) {
+                        $dst .= '/';
+                    }
                     next unless -e $src;
 
                     $sudo->(
