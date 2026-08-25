@@ -826,7 +826,9 @@ sub _internet_wall {
             $first_try = 0;
             if (!system qw{ping -c1 google.com}) {
                 $self->_scroll->set_child($self->_create_main_grid);
+                return 0;
             }
+            return 1;
         }
     );
     return $grid;
