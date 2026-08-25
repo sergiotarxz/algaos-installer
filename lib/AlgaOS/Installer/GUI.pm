@@ -391,7 +391,7 @@ sub _overwrite_installation_menu($self) {
     my $root_block     = 'PARTUUID=' . $self->_root_uuid;
     $self->_overwrite_install_generic(
         container_block => $block,
-        disk_prepare => sub(%args) {
+        disk_prepare    => sub(%args) {
             excfailexit qw{sudo dd if=/dev/zero bs=1M count=10},
               'of=/dev/disk/by-partuuid/' . $self->_root_uuid;
             excfailexit qw{sudo mkfs.ext4},
@@ -486,11 +486,11 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
             if ($preserve_etc) {
                 for my $file (@keep) {
                     my $src = "$old/$file";
-                    if (-d $src) {
+                    if ( -d $src ) {
                         $src .= '/';
                     }
                     my $dst = "$root/etc/$file";
-                    if (-d $dst) {
+                    if ( -d $dst ) {
                         $dst .= '/';
                     }
                     next unless -e $src;
@@ -570,8 +570,8 @@ sub _install( $self, %args ) {
         };
         eval {
             $prepare->();
-            excfailexit
-              qw{sudo perl}, @perl_args_chroot, qw{-MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
+            excfailexit qw{sudo perl}, @perl_args_chroot,
+              qw{-MAlgaOS::Installer::GUI -e AlgaOS::Installer::GUI::chroot_install_commands(@ARGV)},
               $hostname, $username, $password, $timezone, $locale,
               $container_block, $complete_systemd;
 
@@ -649,7 +649,8 @@ EOF
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
     excfailexit qw{systemctl enable chronyd};
-    excfailexit qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service};
+    excfailexit
+      qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service};
     if ($timezone) {
         excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
           '/etc/localtime';
@@ -709,19 +710,21 @@ set superusers="admin"
 password_pbkdf2 admin grub.pbkdf2.sha512.$hash_complete
 EOF
 
+    excfailexit qw{plymouth-set-default-theme colorful_loop};
     for my $kver ( glob("/boot/kernel-*") ) {
         die "No kernel found in /boot\n" unless $kver;
 
         $kver =~ s{.*/kernel-}{};
         say $fh <<"EOF";
+        excfailexit qw{dracut --force --kver}, $kver,
+          qw{--no-hostonly --stdlog 6 --force --add}, "plymouth dmsquash-live",
+          "/boot/initramfs-${kver}.img";
 menuentry "AlgaOS" --unrestricted {
     linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot} splash quiet
     initrd /boot/initramfs-$kver.img
 };
 EOF
     }
-    excfailexit qw{emerge --sync};
-    excfailexit qw{plymouth-set-default-theme -R colorful_loop};
     for my $kver ( glob("/boot/recovery/kernel-*") ) {
         die "No kernel found in /boot/recovery\n" unless $kver;
 
@@ -768,7 +771,7 @@ sub activate($self) {
     $win->set_title("Install AlgaOS");
     my $display  = $win->get_display;
     my $provider = Gtk::CssProvider->new;
-    $provider->load_from_path($dist_dir_files.'/style.css');
+    $provider->load_from_path( $dist_dir_files . '/style.css' );
     $display->add_css_provider( $provider,
         $const->GTK_STYLE_PROVIDER_PRIORITY_APPLICATION );
     my $width  = 800;
@@ -777,7 +780,7 @@ sub activate($self) {
     $win->set_resizable(0);
     $self->win($win);
     my $overlay = Gtk::Overlay->new;
-    my $file    = Gio::File->new($dist_dir_files.'/beach0.jpg');
+    my $file    = Gio::File->new( $dist_dir_files . '/beach0.jpg' );
     my $texture = Gdk::Texture->new($file);
     my $picture = Gtk::Picture->new($texture);
     $overlay->set_child($picture);
