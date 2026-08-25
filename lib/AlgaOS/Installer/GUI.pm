@@ -486,14 +486,12 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
             if ($preserve_etc) {
                 for my $file (@keep) {
                     my $src = "$old/$file";
+                    my $dst = "$root/etc/$file";
+                    next unless -e $src;
                     if ( -d $src ) {
                         $src .= '/';
-                    }
-                    my $dst = "$root/etc/$file";
-                    if ( -d $dst ) {
                         $dst .= '/';
                     }
-                    next unless -e $src;
 
                     $sudo->(
                         'rsync', '-a', qw{--mkpath --numeric-ids},
@@ -646,6 +644,7 @@ EOF
     }
     excfailexit qw{systemctl enable gdm};
     excfailexit qw{systemctl enable NetworkManager};
+    excfailexit qw{systemctl enable systemd-resolved};
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
     excfailexit qw{systemctl enable chronyd};
@@ -791,11 +790,46 @@ sub activate($self) {
     my $password_entry = Gtk::Entry->new;
     $self->_password_entry($password_entry);
     my $scroll = Gtk::ScrolledWindow->new;
-    $scroll->set_child( $self->_create_main_grid );
+    $scroll->set_child( $self->_internet_wall );
     $self->_scroll($scroll);
     $overlay->add_overlay($scroll);
     $win->set_child($overlay);
     $win->present;
+}
+
+sub _internet_wall {
+    my $grid  = Gtk::Grid->new;
+    $self->call_and_increment_grid_row(
+        sub {
+            my $label = Gtk::Label->new('Install AlgaOS');
+            $label->add_css_class('title-1');
+            $grid->attach( $label, 0, $self->_grid_row, 3, 1 );
+        }
+    );
+    $self->call_and_increment_grid_row(
+        sub {
+            $grid->attach( Gtk::Label->new('To install or restore AlgaOS connect to internet, sorry for the inconvenience'),
+                0, $self->_grid_row, 1, 1 );
+        }
+    );
+    my $first_try = 1
+    $self->app->timeout_add(
+        1000,
+        sub {
+            if ($first_try) {
+                if (!system qw{sudo mount PARTLABEL=AlgaOSRoot /mnt/gentoo}) {
+                    system qw{sudo rsync -a -P /mnt/gentoo/etc/NetworkManager/system-connections/ /etc/NetworkManager/system-connections/};
+                    system qw{sudo systemctl restart NetworkManager};
+                    system qw{sudo systemctl restart systemd-resolved};
+                }
+            }
+            $first_try = 0;
+            if (!system qw{ping -c1 google.com}) {
+                $self->_scroll->set_child($self->_create_main_grid);
+            }
+        }
+    );
+    return $grid;
 }
 
 sub run($self) {
