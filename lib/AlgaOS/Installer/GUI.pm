@@ -711,6 +711,7 @@ password_pbkdf2 admin grub.pbkdf2.sha512.$hash_complete
 EOF
 
     excfailexit qw{plymouth-set-default-theme colorful_loop};
+    excfailexit qw{emerge --sync};
     for my $kver ( glob("/boot/kernel-*") ) {
         die "No kernel found in /boot\n" unless $kver;
 
