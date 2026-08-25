@@ -447,7 +447,7 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
               passwd shadow group gshadow subuid subgid
               machine-id hostname hosts locale.conf locale.gen localtime adjtime
               fstab crypttab ssh udev/rules.d
-              NetworkManager/system-connections systemd sudoers.d
+              NetworkManager/system-connections systemd sudoers.d env.d
             );
 
             my $sudo = sub (@cmd) {
