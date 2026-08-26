@@ -457,7 +457,8 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
 
             $sudo->( 'tar', '-tf', $archive );
 
-            my $old = "$root/etc.old";
+            my $old_etc_name = 'etc.old.'.int(rand(1000000000));
+            my $old = "$root/$old_etc_name";
 
             eval { $sudo->( 'cp', '-a', '--', "$root/etc", $old ); };
 
@@ -467,7 +468,7 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
                 'boot',      '!',     '-name',     'grub_hash',
                 '!',         '-name', 'recovery',  '!',
                 '-name',     'home',  '!',         '-name',
-                'etc.old',   '-exec', 'rm',        '-rf',
+                $old_etc_name,   '-exec', 'rm',        '-rf',
                 '--',        '{}',    '+'
             );
 
@@ -477,9 +478,9 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
                 $root,                   '--numeric-owner',
                 '--xattrs-include=*',    '--exclude=home',
                 '--exclude=./home',      '--exclude=home/*',
-                '--exclude=./home/*',    '--exclude=etc.old',
-                '--exclude=./etc.old',   '--exclude=etc.old/*',
-                '--exclude=./etc.old/*', '--exclude=grub_hash',
+                '--exclude=./home/*',    '--exclude='.$old_etc_name,
+                "--exclude=./$old_etc_name",   "--exclude=$old_etc_name/*",
+                "--exclude=./$old_etc_name/*", '--exclude=grub_hash',
                 '--exclude=./grub_hash',
             );
 
