@@ -711,14 +711,14 @@ password_pbkdf2 admin grub.pbkdf2.sha512.$hash_complete
 EOF
 
     excfailexit qw{emerge --sync};
-    excfailexit qw{plymouth-set-default-theme colorful_loop};
+    excfailexit qw{plymouth-set-default-theme -R colorful_loop};
     for my $kver ( glob("/boot/kernel-*") ) {
         die "No kernel found in /boot\n" unless $kver;
 
         $kver =~ s{.*/kernel-}{};
         say $fh <<"EOF";
         excfailexit qw{dracut --force --kver}, $kver,
-          qw{--no-hostonly --stdlog 6 --force --add}, "plymouth dmsquash-live",
+          qw{--no-hostonly --stdlog 6 --add --},
           "/boot/initramfs-${kver}.img";
 menuentry "AlgaOS" --unrestricted {
     linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot} splash quiet
@@ -731,7 +731,7 @@ EOF
 
         $kver =~ s{.*/kernel-}{};
         excfailexit qw{dracut --force --kver}, $kver,
-          qw{--no-hostonly --stdlog 6 --force --add}, "plymouth dmsquash-live",
+          qw{--no-hostonly --stdlog 6 --add}, "dmsquash-live", qw{--},
           "/boot/recovery/initramfs-${kver}.img";
 
         say $fh <<"EOF";
