@@ -468,7 +468,7 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
                 'boot',      '!',     '-name',     'grub_hash',
                 '!',         '-name', 'recovery',  '!',
                 '-name',     'home',  '!',         '-name',
-                $old_etc_name,   '-exec', 'rm',        '-rf',
+                'etc.old*',   '-exec', 'rm',        '-rf',
                 '--',        '{}',    '+'
             );
 
