@@ -156,7 +156,7 @@ sub _overwrite_install_generic( $self, %args ) {
                      ( $b eq 'Europe/Madrid' ) <=> ( $a eq 'Europe/Madrid' )
                   || $is_national->($b)        <=> $is_national->($a)
                   || $is_europe->($b)          <=> $is_europe->($a)
-                  || $a cmp $b;
+                  || $a                        cmp $b;
             } @timezones;
             my $dropdown = Gtk::Dropdown->new( [@timezones] );
             $self->_dropdown_timezones($dropdown);
@@ -187,7 +187,7 @@ sub _overwrite_install_generic( $self, %args ) {
                      $is_spain_spanish->($b) <=> $is_spain_spanish->($a)
                   || $is_spanish->($b)       <=> $is_spanish->($a)
                   || $is_english->($b)       <=> $is_english->($a)
-                  || $a cmp $b;
+                  || $a                      cmp $b;
             } @locales;
             my $dropdown = Gtk::Dropdown->new( [@locales] );
             $self->_dropdown_locale($dropdown);
@@ -457,8 +457,8 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
 
             $sudo->( 'tar', '-tf', $archive );
 
-            my $old_etc_name = 'etc.old.'.int(rand(1000000000));
-            my $old = "$root/$old_etc_name";
+            my $old_etc_name = 'etc.old.' . int( rand(1000000000) );
+            my $old          = "$root/$old_etc_name";
 
             eval { $sudo->( 'cp', '-a', '--', "$root/etc", $old ); };
 
@@ -468,17 +468,17 @@ sub _restore_system ( $self, $archive, $root, $preserve_etc ) {
                 'boot',      '!',     '-name',     'grub_hash',
                 '!',         '-name', 'recovery',  '!',
                 '-name',     'home',  '!',         '-name',
-                'etc.old*',   '-exec', 'rm',        '-rf',
+                'etc.old*',  '-exec', 'rm',        '-rf',
                 '--',        '{}',    '+'
             );
 
             $sudo->(
-                'tar',                   '-xpf',
-                $archive,                '-C',
-                $root,                   '--numeric-owner',
-                '--xattrs-include=*',    '--exclude=home',
-                '--exclude=./home',      '--exclude=home/*',
-                '--exclude=./home/*',    '--exclude='.$old_etc_name,
+                'tar',                         '-xpf',
+                $archive,                      '-C',
+                $root,                         '--numeric-owner',
+                '--xattrs-include=*',          '--exclude=home',
+                '--exclude=./home',            '--exclude=home/*',
+                '--exclude=./home/*',          '--exclude=' . $old_etc_name,
                 "--exclude=./$old_etc_name",   "--exclude=$old_etc_name/*",
                 "--exclude=./$old_etc_name/*", '--exclude=grub_hash',
                 '--exclude=./grub_hash',
@@ -681,52 +681,9 @@ EOF
     }
     excfailexit
       "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
-    my $grub_dir = "/boot/grub";
-    system qw{mkdir -pv}, $grub_dir;
-    open $fh, '<', '/grub_hash';
-    local $/ = undef;
-    my $hash_complete = <$fh>;
-    close $fh;
-
-    if ( !$hash_complete ) {
-        my $salt       = urandom(64);
-        my $salt_hex   = unpack( 'H*', $salt );
-        my $iterations = 1000;
-
-        die 'No pass' if !$password;
-        my $hash =
-          PBKDF2::Tiny::derive_hex( 'SHA-512', $password, $salt, $iterations,
-            64 );
-        $hash_complete = "$iterations.$salt_hex.$hash";
-        open my $fh, '>', '/grub_hash';
-        print $fh $hash_complete;
-        close $fh;
-    }
-
-    open $fh, '>', "$grub_dir/grub.cfg";
-    say $fh <<"EOF";
-set timeout=5
-set default=0
-set superusers="admin"
-password_pbkdf2 admin grub.pbkdf2.sha512.$hash_complete
-EOF
 
     excfailexit qw{emerge --sync};
     excfailexit qw{plymouth-set-default-theme -R colorful_loop};
-    for my $kver ( glob("/boot/kernel-*") ) {
-        die "No kernel found in /boot\n" unless $kver;
-
-        $kver =~ s{.*/kernel-}{};
-        say $fh <<"EOF";
-        excfailexit qw{dracut --force --kver}, $kver,
-          qw{--no-hostonly --stdlog 6 --add --},
-          "/boot/initramfs-${kver}.img";
-menuentry "AlgaOS" --unrestricted {
-    linux /boot/kernel-$kver root=PARTUUID=$devices{AlgaOSRoot} splash quiet
-    initrd /boot/initramfs-$kver.img
-};
-EOF
-    }
     for my $kver ( glob("/boot/recovery/kernel-*") ) {
         die "No kernel found in /boot/recovery\n" unless $kver;
 
@@ -734,14 +691,21 @@ EOF
         excfailexit qw{dracut --force --kver}, $kver,
           qw{--no-hostonly --stdlog 6 --add}, "dmsquash-live", qw{--},
           "/boot/recovery/initramfs-${kver}.img";
-
-        say $fh <<"EOF";
-menuentry "AlgaOS Recovery" --users admin {
-    linux /boot/recovery/kernel-$kver root=live:PARTUUID=$devices{AlgaOSRecovery} rd.live.dir=/ rd.live.squashimg=rootfs.squashfs rd.live.overlay.overlayfs=1 rd.live.debug=1 rd.systemd.show_status=1 rd.systemd.log_level=debug splash quiet
-    initrd /boot/recovery/initramfs-$kver.img
-};
-EOF
     }
+    excfailexit(
+        qw{update-grub},
+        (
+            defined $password
+            ? ( '--new-pass', $password )
+            : ()
+        ),
+	qw{--target-device}, $block_devices,
+	(
+		defined $username
+		? ('--user', $username)
+		: ()
+	)
+    );
     excfailexit qw{rm -frv /var/db/repos/algaos/};
     $ENV{HOME}          = '/home/test';
     $ENV{USER}          = 'test';
@@ -749,6 +713,7 @@ EOF
     $ENV{XDG_DATA_HOME} = '/home/test/.local/share';
     $ENV{XDG_DATA_DIRS} =
 '/home/test/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share';
+
     if ($username) {
         excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
 "flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
