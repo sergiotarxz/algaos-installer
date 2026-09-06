@@ -613,11 +613,13 @@ sub chroot_install_commands {
         $complete_systemd )
       = @ARGV;
     system qw{mount -t proc proc /mnt/gentoo/proc};
-    system qw{mount -t sysfs sysfs /mnt/gentoo/sys};
+    system qw{mount --rbind /sys/ /mnt/gentoo/sys};
     system qw{mount --rbind /dev/ /mnt/gentoo/dev};
+    system qw{mount --rbind /run/ /mnt/gentoo/run};
     system qw{mount --make-rslave /mnt/gentoo/proc};
     system qw{mount --make-rslave /mnt/gentoo/sys};
     system qw{mount --make-rslave /mnt/gentoo/dev};
+    system qw{mount --make-rslave /mnt/gentoo/run};
     my $devices = `lsblk -o PARTLABEL,PARTUUID $block_devices`;
     chroot '/mnt/gentoo';
     chdir '/';
