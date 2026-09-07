@@ -681,19 +681,8 @@ EOF
         say $fh "$username ALL=(ALL) NOPASSWD: ALL";
         close $fh;
     }
-    excfailexit
-      "rsync -a --mkpath /boot/kernel* /boot/initramfs* /boot/recovery/";
-
     excfailexit qw{emerge --sync};
     excfailexit qw{plymouth-set-default-theme -R colorful_loop};
-    for my $kver ( glob("/boot/recovery/kernel-*") ) {
-        die "No kernel found in /boot/recovery\n" unless $kver;
-
-        $kver =~ s{.*/kernel-}{};
-        excfailexit qw{dracut --force --kver}, $kver,
-          qw{--no-hostonly --stdlog 6 --add}, "dmsquash-live", qw{--},
-          "/boot/recovery/initramfs-${kver}.img";
-    }
     excfailexit(
         qw{update-grub},
         (
