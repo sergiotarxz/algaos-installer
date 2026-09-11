@@ -156,7 +156,7 @@ sub _overwrite_install_generic( $self, %args ) {
                      ( $b eq 'Europe/Madrid' ) <=> ( $a eq 'Europe/Madrid' )
                   || $is_national->($b)        <=> $is_national->($a)
                   || $is_europe->($b)          <=> $is_europe->($a)
-                  || $a                        cmp $b;
+                  || $a cmp $b;
             } @timezones;
             my $dropdown = Gtk::Dropdown->new( [@timezones] );
             $self->_dropdown_timezones($dropdown);
@@ -187,7 +187,7 @@ sub _overwrite_install_generic( $self, %args ) {
                      $is_spain_spanish->($b) <=> $is_spain_spanish->($a)
                   || $is_spanish->($b)       <=> $is_spanish->($a)
                   || $is_english->($b)       <=> $is_english->($a)
-                  || $a                      cmp $b;
+                  || $a cmp $b;
             } @locales;
             my $dropdown = Gtk::Dropdown->new( [@locales] );
             $self->_dropdown_locale($dropdown);
@@ -683,20 +683,6 @@ EOF
     }
     excfailexit qw{emerge --sync};
     excfailexit qw{plymouth-set-default-theme -R colorful_loop};
-    excfailexit(
-        qw{update-grub},
-        (
-            defined $password
-            ? ( '--new-pass', $password )
-            : ()
-        ),
-	qw{--target-device}, $block_devices,
-	(
-		defined $username
-		? ('--user', $username)
-		: ()
-	)
-    );
     excfailexit qw{rm -frv /var/db/repos/algaos/};
     $ENV{HOME}          = '/home/test';
     $ENV{USER}          = 'test';
@@ -713,11 +699,19 @@ EOF
         excfailexit qw{sudo -u}, $username, qw{dbus-run-session -- bash -c},
           "flatpak --user install --noninteractive com.usebottles.bottles";
     }
-    excfailexit qw{grub-install --target=i386-pc --recheck}, $block_devices;
-    excfailexit qw{grub-install
-      --target=x86_64-efi
-      --efi-directory=/boot/efi
-      --removable};
+    excfailexit(
+        qw{update-grub},
+        (
+            defined $password ? ( '--new-pass', $password )
+            : ()
+        ),
+        qw{--target-device},
+        $block_devices,
+        (
+            defined $username ? ( '--user', $username )
+            : ()
+        )
+    );
     exit 0;
 }
 
