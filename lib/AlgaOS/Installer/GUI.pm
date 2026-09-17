@@ -647,6 +647,7 @@ EOF
     excfailexit qw{systemctl enable cronie};
     excfailexit qw{systemctl enable bluetooth};
     excfailexit qw{systemctl enable chronyd};
+    excfailexit qw{systemctl enable power-profiles-daemon};
     excfailexit
       qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service};
 
