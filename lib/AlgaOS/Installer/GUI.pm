@@ -397,10 +397,6 @@ sub _overwrite_installation_menu($self) {
             excfailexit qw{sudo mkfs.ext4},
               '/dev/disk/by-partuuid/' . $self->_root_uuid;
             excfailexit qw{sudo dd if=/dev/zero bs=1M count=10},
-              'of=/dev/disk/by-partuuid/' . $self->_recovery_uuid;
-            excfailexit qw{sudo mkfs.ext4},
-              '/dev/disk/by-partuuid/' . $self->_recovery_uuid;
-            excfailexit qw{sudo dd if=/dev/zero bs=1M count=10},
               'of=/dev/disk/by-partuuid/' . $self->_efi_uuid;
             excfailexit qw{sudo mkfs.vfat},
               '/dev/disk/by-partuuid/' . $self->_efi_uuid;
