@@ -649,7 +649,7 @@ EOF
     excfailexit qw{systemctl enable chronyd};
     excfailexit qw{systemctl enable power-profiles-daemon};
     excfailexit
-      qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service};
+      qw{systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service orca.service};
 
     if ($timezone) {
         excfailexit qw{ln -svf}, "../usr/share/zoneinfo/$timezone",
